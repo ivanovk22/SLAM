@@ -119,9 +119,9 @@ for t in range(1, N):
                   [lower_zeros, dLower_dx]])
 
     # Corrected G (Jacobian of f w.r.t process noise w=[wf, wa]')
-    dupper_dw = np.array([[Ts * np.cos(theta_prev_corrected), 0],
-                          [Ts * np.sin(theta_prev_corrected), 0],
-                          [0, Ts]])
+    dupper_dw = np.array([[-Ts * np.cos(theta_prev_corrected), 0],
+                          [-Ts * np.sin(theta_prev_corrected), 0],
+                          [0, -Ts]])
     dlower_dw = np.zeros((n_lower, 2))
     G = np.block([[dupper_dw],
                   [dlower_dw]])
@@ -311,3 +311,5 @@ print("\nFinal Estimated Robot Pose:", pose_pred[-1, :])
 print("Final True Robot Pose:", pose_true[-1, :])
 print("\nFinal Estimated Landmark Positions:\n", final_landmark_estimates)
 print("True Landmark Positions:\n", Landmarks_true)
+
+
