@@ -5,13 +5,19 @@ from scipy.linalg import block_diag
 
 plt.close('all')
 
-d = np.load('data_point_land_1.npz', allow_pickle=True)
-Meas = d['Meas']
-Vtn = d['Uf']
-Wtn = d['Ua']
+data = np.load('data_point_land_1.npz', allow_pickle=True)
 
+#print(data.files)
 
+Meas = data['Meas']
+Uf = data['Uf']
+Ua = data['Ua']
+Q = data['Q']
+Qturn = data['Qturn']
+R = data['R']
+Nland = data['Nland']
+Ts = data['Ts']
+wturn = data['wturn']
+Pose = data['Pose']
+Landmarks = data['Landmarks']
 
-
-#enviroenment
-sizeenv = 27.
