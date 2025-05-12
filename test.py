@@ -107,9 +107,10 @@ plt.tight_layout(); plt.show()
 
 # Trajectory and landmarks
 plt.figure()
-plt.plot(pose_true[:,0], pose_true[:,1], label='True Traj')
-plt.plot(pose_est[:,0], pose_est[:,1], '--', label='Est Traj')
-plt.scatter(Landmarks[:,0], Landmarks[:,1], c='g', marker='x', label='True LM')
+plt.plot(pose_true[:,0], pose_true[:,1], label='True Trajectory')
+plt.plot(pose_est[:,0], pose_est[:,1], '--', label='Est Trajectory')
+plt.scatter(Landmarks[:,0], Landmarks[:,1], edgecolor='purple', facecolor='none', label='True Landmarks')
 LM_est = X_hist[-1, n_upper:].reshape(-1,2)
-plt.scatter(LM_est[:,0], LM_est[:,1], edgecolor='purple', facecolor='none', label='Est LM')
+plt.scatter(LM_est[:,0], LM_est[:,1], c='g', marker='x', label='Est Landmarks')
 plt.legend(); plt.title('Trajectory and Landmarks'); plt.axis('equal'); plt.grid(); plt.show()
+
