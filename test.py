@@ -229,7 +229,7 @@ for t in range(1, N):
             # Pp_updated = Pp_current_iter - K @ H @ Pp_current_iter # Simpler form
             # Joseph form for P update (more stable)
             I_n = np.eye(n)
-            Pp_updated = (I_n - K @ H) @ Pp_current_iter @ (I_n - K @ H).T + K @ R_batch @ K.T
+            Pp_updated = Pp_current_iter @ (I_n - H.T@K.T)
 
             inn_val = innovation(measurement_for_correction, Xp_current_iter)
 
