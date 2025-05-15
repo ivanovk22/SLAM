@@ -1,13 +1,12 @@
 import numpy as np
 import matplotlib.pyplot as plt
-from scipy.stats import chi2
 
 import scipy
 from scipy.linalg import block_diag
 
 plt.close('all')
 
-data = np.load('data_point_land_1.npz', allow_pickle=True)
+data = np.load('data_point_land_2.npz', allow_pickle=True)
 
 Meas = data['Meas']  # Landmark measurements
 Uf = data['Uf']  # measured forward velocity (odometry)
@@ -108,7 +107,7 @@ def correction(xp, pp, M):
     R_new = np.kron(np.eye(len(indexes)), R)
     # Equations
     K = pp @ H.T @ np.linalg.inv(H @ pp @ H.T + R_new)
-    P = pp - K @ H @ pp
+    P = pp @ (np.eye(n) - H.T @ K.T)
     measurement = np.array([ranges, angles, indexes]).T
     inn = innovation(measurement, xp)
     X = xp + (K @ inn).reshape(-1)
@@ -208,7 +207,7 @@ print("\nFinal Estimated Landmark Positions:\n", landmark_pred)
 # print("True Landmark Positions:\n", Landmarks)
 
 
-T = np.arange(0, N * Ts, Ts)
+T = np.arange(0, N * Ts, Ts) # Time
 # Plots and comparisons
 fig = plt.figure()
 ax1 = plt.subplot(3, 1, 1)
@@ -237,7 +236,6 @@ plt.legend(loc='upper right')
 # plt.grid(True)
 
 fig.tight_layout()
-plt.show()
 
 # Trajectory
 fig = plt.figure()
@@ -245,7 +243,6 @@ ax1 = plt.subplot(2, 1, 1)
 ax1.plot(pose_true[:, 0], pose_true[:, 1], label=r'$x_1(t)$')
 ax1.plot(pose_pred[:, 0], pose_pred[:, 1], label=r'$\hat{x}_1(t)$', color='red', linestyle='--')
 plt.legend(loc='center')
-plt.show()
 
 # Landmark positions
 landmark_pred = landmark_pred.reshape(-1, 2)
@@ -261,7 +258,6 @@ plt.ylabel("Y position (m)")
 plt.title("Robot Trajectory and Landmarks")
 plt.legend()
 # plt.grid(True)
-plt.show()
 
 
 # Confidence intervals
@@ -288,33 +284,33 @@ plt.xlabel('$t$')
 plt.ylabel(r'$\theta(t)-\hat{\theta}(t)$')
 plt.title(r'Estimation error (red) and $3\sigma$-confidence intervals (blue) for $\theta(t)$')
 # plt.axis([T[0], T[-1], -np.sqrt(P_pred[-1, 2]) * 20, np.sqrt(P_pred[-1, 2]) * 20])
-plt.show()
 
 
-chi2_threshold = chi2.ppf(0.997, df=39)
-mahalanobis_distances = []
-landmarks_fl = Landmarks.flatten()
+# Confidence ellipses
+r_x = 9.21  # 99% confidence ellipse
+consistent = []
+for j in range(Nland): #for all landmarks
+    idx = n_upper + 2 * j
+    L_true = Landmarks[j]
+    L_est = X_pred[-1][idx:idx + 2]
+    Pj = P_pred_full[-1][idx:idx + 2, idx:idx + 2]
 
+    error = (L_true - L_est).reshape(-1, 1)
+    VTV = error.T @ np.linalg.inv(Pj) @ error
 
-for t in range(len(T)):
-    error = X_pred[t] - np.concatenate((Pose[t], landmarks_fl))
-    P = P_pred_full[t]
-    error = error.reshape(-1, 1)
+    consistent.append(VTV[0][0] < r_x)
 
-    P_inv = np.linalg.inv(P)
-    d2 = error.T @ P_inv @ error
-    mahalanobis_distances.append(d2[0][0])
+all_good = True
+for lm in range(len(consistent)):
+    if consistent[lm] == np.True_:
+        print(f"Landmark {lm+1} = Consistent within confidence ellipse. ")
+    else:
+        print(f"Landmark {lm+1} = NOT CONSISTENT!")
+        all_good = False
 
+if all_good:
+    print("All landmarks are consistent. All good!")
+else:
+    print("Error: One or more landmarks are inconsistent. :(")
 
-mahalanobis_distances = np.array(mahalanobis_distances)
-# Plot Mahalanobis distances
-plt.figure(figsize=(10, 4))
-plt.plot(T, mahalanobis_distances, label='Mahalanobis distance squared')
-plt.axhline(chi2_threshold, color='r', linestyle='--', label=r'$99.7\%$ $\chi^2_{39}$ threshold')
-plt.xlabel("Time")
-plt.ylabel(r"$\|V_t\|^2$")
-plt.title("Mahalanobis Distance Over Time")
-plt.legend()
-plt.grid(True)
-plt.tight_layout()
 plt.show()
