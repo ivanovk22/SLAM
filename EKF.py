@@ -1,12 +1,13 @@
 import numpy as np
 import matplotlib.pyplot as plt
+from matplotlib.patches import Ellipse
 
 import scipy
 from scipy.linalg import block_diag
 
 plt.close('all')
 
-data = np.load('data_point_land_2.npz', allow_pickle=True)
+data = np.load('data_point_land_1.npz', allow_pickle=True)
 
 Meas = data['Meas']  # Landmark measurements
 Uf = data['Uf']  # measured forward velocity (odometry)
@@ -289,10 +290,15 @@ plt.title(r'Estimation error (red) and $3\sigma$-confidence intervals (blue) for
 # Confidence ellipses
 r_x = 9.21  # 99% confidence ellipse
 consistent = []
+radii_all = []
+fig, ax = plt.subplots(figsize=(8, 8))
+
+
 for j in range(Nland): #for all landmarks
     idx = n_upper + 2 * j
     L_true = Landmarks[j]
     L_est = X_pred[-1][idx:idx + 2]
+
     Pj = P_pred_full[-1][idx:idx + 2, idx:idx + 2]
 
     error = (L_true - L_est).reshape(-1, 1)
@@ -300,6 +306,31 @@ for j in range(Nland): #for all landmarks
 
     consistent.append(VTV[0][0] < r_x)
 
+    eigenvals, eigenvecs = np.linalg.eig(Pj)
+
+    # Sort eigenvalues and eigenvectors so largest eigenvalue comes first (major axis)
+    order = eigenvals.argsort()[::-1]
+    eigenvals = eigenvals[order]
+    eigenvecs = eigenvecs[:, order]
+
+    # Calculate ellipse angle in degrees
+    angle = np.arctan2(eigenvecs[1, 0], eigenvecs[0, 0]) * 180 / np.pi
+
+    # Calculate axes lengths (scaled by sqrt of chi-square quantile for confidence)
+    width, height = 2 * np.sqrt(eigenvals * r_x)  # factor 2 because width = 2*a, height = 2*b
+
+    # Create ellipse patch
+    ellipse = Ellipse(xy=L_est, width=width, height=height, angle=angle, edgecolor='blue', fc='None', lw=2)
+
+    ax.add_patch(ellipse)
+    # Plot landmark estimate as a point
+    ax.plot(L_est[0], L_est[1], 'ro')
+ax.set_xlabel('X position')
+ax.set_ylabel('Y position')
+ax.set_title('Landmark position estimates with 99% confidence ellipses')
+ax.axis('equal')
+plt.grid(True)
+plt.show()
 all_good = True
 for lm in range(len(consistent)):
     if consistent[lm] == np.True_:
