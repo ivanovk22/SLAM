@@ -1,5 +1,7 @@
 import numpy as np
 import matplotlib.pyplot as plt
+from scipy.stats import chi2
+
 import scipy
 from scipy.linalg import block_diag
 
@@ -120,6 +122,8 @@ Xp = x0.copy()
 Pp = P0.copy()
 X_pred = np.empty((N, n))
 P_pred = np.empty((N, n))
+P_pred_full = np.zeros((N, n, n))
+
 Q_straight = Q.copy()
 checked_landmarks = []
 Xp_lower = np.zeros(n_lower)
@@ -144,6 +148,7 @@ Xp, Pp = correction(Xp, Pp, m)
 
 X_pred[0, :] = Xp
 P_pred[0, :] = np.diag(Pp)
+P_pred_full[0, :] = Pp
 
 i = 1
 while i < N:
@@ -186,6 +191,7 @@ while i < N:
 
     X_pred[i, :] = Xp
     P_pred[i, :] = np.diag(Pp)
+    P_pred_full[i, :] = Pp
 
     i += 1
 
@@ -282,4 +288,33 @@ plt.xlabel('$t$')
 plt.ylabel(r'$\theta(t)-\hat{\theta}(t)$')
 plt.title(r'Estimation error (red) and $3\sigma$-confidence intervals (blue) for $\theta(t)$')
 # plt.axis([T[0], T[-1], -np.sqrt(P_pred[-1, 2]) * 20, np.sqrt(P_pred[-1, 2]) * 20])
+plt.show()
+
+
+chi2_threshold = chi2.ppf(0.997, df=39)
+mahalanobis_distances = []
+landmarks_fl = Landmarks.flatten()
+
+
+for t in range(len(T)):
+    error = X_pred[t] - np.concatenate((Pose[t], landmarks_fl))
+    P = P_pred_full[t]
+    error = error.reshape(-1, 1)
+
+    P_inv = np.linalg.inv(P)
+    d2 = error.T @ P_inv @ error
+    mahalanobis_distances.append(d2[0][0])
+
+
+mahalanobis_distances = np.array(mahalanobis_distances)
+# Plot Mahalanobis distances
+plt.figure(figsize=(10, 4))
+plt.plot(T, mahalanobis_distances, label='Mahalanobis distance squared')
+plt.axhline(chi2_threshold, color='r', linestyle='--', label=r'$99.7\%$ $\chi^2_{39}$ threshold')
+plt.xlabel("Time")
+plt.ylabel(r"$\|V_t\|^2$")
+plt.title("Mahalanobis Distance Over Time")
+plt.legend()
+plt.grid(True)
+plt.tight_layout()
 plt.show()
