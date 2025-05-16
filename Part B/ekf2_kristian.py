@@ -1,6 +1,7 @@
 import numpy as np
 import matplotlib.pyplot as plt
 from matplotlib.patches import Ellipse
+
 import scipy
 from scipy.linalg import block_diag
 
@@ -14,7 +15,7 @@ Ua = data['Ua']  # measured angular velocity (odometry)
 Q = data['Q']
 Qturn = data['Qturn']
 R = data['R']
-Nland = data['Nland']  # number of Landmarks (not to be used for part B)
+Nland = data['Nland']  # number of Landmarks
 Ts = data['Ts']
 Wturn = data['wturn']  # treshold Wturn
 Pose = data['Pose']  # data to be used only for comparison (x(t), y(t), theta(t) of the robot)
@@ -23,30 +24,44 @@ Landmarks = data[
 
 range_land = Meas.item()['range']  # landmark ranges
 angle_land = Meas.item()['angle']  # landmark angles
-index_land = Meas.item()['land']  # landmark indices !not to be used for part B!
+# index_land = Meas.item()['land']  # landmark indices
 
 N = Uf.shape[0]  # Number of odometry measurements
-
 n_upper = 3  # upper system order: x,y,theta
-#n_lower = Nland.item() * 2  # lower system order: 2 for every landmark (x,y)
-#n = n_upper + n_lower  # system order
-n = n_upper #initial states are only x,y,theta
+upper_threshold = 13.8155
+lower_threshold = 5.9915
+# n_lower = Nland.item() * 2  # lower system order: 2 for every landmark (x,y)
+# n = n_upper + n_lower  # system order
+def append_to_array(arr, to_append):
+    arr = arr.tolist()
+    arr.append(to_append)
+    return np.array(arr)
 
-x0 = np.zeros(n)  # initial states
-x0[0] = Pose[0, 0]  # x(0)
-x0[1] = Pose[0, 1]  # y(0)
-x0[2] = Pose[0, 2]  # theta(0)
+
+
+# x0 = np.zeros(n_upper)  # initial states
+# x0[0] = Pose[0, 0]  # x(0)
+# x0[1] = Pose[0, 1]  # y(0)
+# x0[2] = Pose[0, 2]  # theta(0)
+
+x0 = np.array([])  # initial states
+x0 = append_to_array(x0, Pose[0, 0])
+x0 = append_to_array(x0, Pose[0, 1])
+x0 = append_to_array(x0, Pose[0, 2])
+
+
+
 # upper covariance
 lambda_ = 1e-6
 P_upper = lambda_ * np.eye(n_upper)  # uncertainty of x,y,theta
-#upper_zeros = np.zeros((n_upper, n_lower))
+# upper_zeros = np.zeros((2, 2))
 # lower covariance
 eta = 1000
-#P_lower = eta * np.eye(n_lower)  # uncertainty landmarks
-#lower_zeros = np.zeros((n_lower, n_upper))
+# P_lower = eta * np.eye(n_lower)  # uncertainty landmarks
+# lower_zeros = np.zeros((n_lower, n_upper))
 # Initial covariance
-"""P0 = np.block([[P_upper, upper_zeros],
-               [lower_zeros, P_lower]])"""
+# P0 = np.block([[P_upper, upper_zeros],
+#                [lower_zeros, P_lower]])
 P0 = P_upper
 
 
@@ -54,14 +69,15 @@ def angle_wrap(angle):
     angle = (angle + np.pi) % (2 * np.pi) - np.pi
     return angle
 
-def innovation(M, xp):
-    landmarks = M[:, 2]
+
+def innovation(M, xp, landmarks):
+    # landmarks = M[:, 2]
 
     # take the predictions
     predicted_meas = np.zeros((len(landmarks), 2))
 
     for i in range(len(landmarks)):
-        j = int(landmarks[i] - 1)
+        j = int(landmarks[i])
 
         lx = xp[n_upper + 2 * j]
         ly = xp[n_upper + 2 * j + 1]
@@ -74,12 +90,20 @@ def innovation(M, xp):
     inn = M[:, :2] - predicted_meas
     return inn.reshape(-1, 1)
 
-def calc_H_R(xp, indices): # calculates the H and R matrices
-    H = np.zeros((len(indices) * 2, xp.shape[0]))
-    for k in range(len(indices)):
-        # landmarks are from 1, so when we see landmark 1 it means that it will
-        # be on the 0 position after x, y, theta - Lx1 = 3, Ly1 = 4
-        j = int(indices[k]) - 1
+
+
+def correction(xp, pp, M, landmarks):
+    ranges = M[0]
+    angles = M[1]
+    # indexes = M[2]
+    n_states = len(xp)
+    H = np.zeros((len(ranges) * 2, n_states)) # (num_measurements*2(rho and theta))x(num_states)
+
+    for k in range(len(ranges)):
+
+
+        j = landmarks[k]
+
         lx = xp[n_upper + 2 * j]
         ly = xp[n_upper + 2 * j + 1]
 
@@ -101,19 +125,14 @@ def calc_H_R(xp, indices): # calculates the H and R matrices
         H[row_alpha][2] = -1  # dtheta
         H[row_alpha][n_upper + 2 * j] = -(ly - xp[1]) / alpha_den  # dlx
         H[row_alpha][n_upper + 2 * j + 1] = (lx - xp[0]) / alpha_den  # dly
-    R_new = np.kron(np.eye(len(indices)), R)
-    return H, R_new
 
-def correction(xp, pp, M):
-    ranges = M[0]
-    angles = M[1]
-    indices = M[2]
-    H,R = calc_H_R(xp, indices)
+    # print('H shape:', H.shape)
+    R_new = np.kron(np.eye(len(ranges)), R)
     # Equations
-    K = pp @ H.T @ np.linalg.inv(H @ pp @ H.T + R)
-    P = pp @ (np.eye(xp.shape[0]) - H.T @ K.T)
-    measurement = np.array([ranges, angles, indices]).T
-    inn = innovation(measurement, xp)
+    K = pp @ H.T @ np.linalg.inv(H @ pp @ H.T + R_new)
+    P = pp @ (np.eye(n_states) - H.T @ K.T)
+    measurement = np.array([ranges, angles]).T
+    inn = innovation(measurement, xp, landmarks)
     X = xp + (K @ inn).reshape(-1)
 
 
@@ -121,69 +140,109 @@ def correction(xp, pp, M):
     pp = P.copy()
     return xp, pp
 
-def calc_d(xp,pp,meas, indexes):
-    #find delta
-    lx = meas[0]
-    ly = meas[1]
-    delta_ =np.array([[ mp - np.sqrt((lx-xp[0])**2+(ly-xp[1])**2)],
-                      [ma - np.atan2((ly-xp[1]),(lx-xp[0])+xp[2])]])
+def extend_P(p, num_new_landmarks):
+    # extend P with the number of the new initialized landmarks
+    diagonal = p.diagonal().tolist()
+    diagonal.extend([eta]*num_new_landmarks*2)
 
-    #calculate H, R
-    H, R = calc_H_R(xp, indexes)
-
-    #calculate d
-    d = delta_.T @ np.linalg.inv(H @ pp @ H.T + R) @ delta_
-    #use H
-    return d
-
+    new_p = np.zeros((n_upper+2*num_new_landmarks, n_upper+2*num_new_landmarks))
+    np.fill_diagonal(new_p, diagonal)
+    # print(diagonal)
+    # print('-------------')
+    # print(p)
+    # print(p.shape)
+    # print(new_p)
+    # print(new_p.shape)
+    return new_p
 Xp = x0.copy()
 Pp = P0.copy()
-X_pred = np.empty((N, n))
-P_pred = np.empty((N, n))
-P_pred_full = np.zeros((N, n, n))
+# AT THE END WE HAVE TO FILL ALL OF THE 220 ROWS WITH 0's DEPENDING ON THE LAST DIMENSION OF Xp
+X_pred = np.empty((N, 3))
+P_pred = np.empty((N, 3))
+# P_pred_full = np.zeros((N, n, n))
 
 Q_straight = Q.copy()
-
-#Xp_lower = np.zeros(n_lower)
+landmarks_map = []
 
 """
            ########### Initialize and correct for t = 0 ###########
 """
-checked_landmarks = []
-indexes = []
-for l in range(len(range_land[0])): #This loop initializes the first landmarks, increases xp and pp size accordingly
-    indexes.append(l+1) #not so sure about this one. maybe only using checked_landmarks can be enough
-    checked_landmarks.append(l)
-    j = indexes[l]
-    mp = range_land[0][l]
-    ma = angle_land[0][l]
-    lx = np.array([Xp[0] + mp * np.cos(Xp[2] + ma)])
-    ly = np.array([Xp[1] + mp * np.sin(Xp[2] + ma)])
-    Xp = np.concatenate((Xp,lx))
-    Xp = np.concatenate((Xp,ly))
-    Pp = np.block([[Pp, np.zeros((Pp.shape[0],2))],
-                   [np.zeros((2,Pp.shape[0])), eta * np.eye(2)]])
+
+for l in range(len(range_land[0])):
+    if range_land[0][l] not in landmarks_map:  # Initialize
+        landmarks_map.append(len(landmarks_map))
+        j = l
+        mp = range_land[0][l]
+        ma = angle_land[0][l]
+        lx = Xp[0] + mp * np.cos(Xp[2] + ma)
+        ly = Xp[1] + mp * np.sin(Xp[2] + ma)
+        Xp = append_to_array(Xp, lx)
+        Xp = append_to_array(Xp, ly)
+        # Xp[n_upper + 2 * j] = lx
+        # Xp[n_upper + 2 * j + 1] = ly
+
+m = np.array([range_land[0], angle_land[0]])
+Pp = extend_P(Pp, len(range_land[0]))
+Xp, Pp = correction(Xp, Pp, m, landmarks_map)
+
+# print('Xp:', Xp)
+# print('Pp:', Pp)
+# exit(0)
 
 
 
-m = np.array([range_land[0], angle_land[0], indexes])
-Xp, Pp = correction(Xp, Pp, m)
 
-X_pred = []
-P_pred = []
-X_pred[0, :] = Xp
-P_pred[0, :] = np.diag(Pp)
-P_pred_full[0, :] = Pp
 
-#Odometry trajectory
-X_predod = np.empty((N, n))
-Xodometry = Xp.copy()
-for o in range(1,N):
-    Xod = Xodometry.copy()
-    Xodometry = Xod + np.concatenate((Ts * np.array([Uf[o - 1] * np.cos(Xod[2]), Uf[o - 1] * np.sin(Xod[2]), Ua[o - 1]]), Xp_lower))
-    X_predod[o, :] = Xodometry
-print(f"X_predod.shape = {X_predod.shape}")
 
+def max_likelihood(r, alpha, x, p):
+    landmarks = x[3:]
+    print('len landmarks:', len(landmarks))
+    landmarks = landmarks.reshape(int(len(landmarks)/2), 2)
+    # print(landmarks)
+    # print(len(landmarks))
+    num_l = len(landmarks)
+    # print(type(num_l))
+    distances = []
+    print('r:', r)
+    print('alpha:', alpha)
+    robot_x = x[0]
+    robot_y = x[1]
+    robot_theta = x[2]
+    # H = np.zeros((2, len(x)))
+    for l in range(len(landmarks)):
+        H = np.zeros((2, len(x)))
+
+        lx = landmarks[l][0]
+        ly = landmarks[l][1]
+        new_p = r -  np.sqrt((lx - robot_x) ** 2 + (ly - robot_y) ** 2)
+        new_alpha = alpha - angle_wrap(np.arctan2(ly - robot_y, lx - robot_y) - robot_theta)
+
+        delta = np.array([new_p, new_alpha]).reshape(-1, 1)
+
+        p_den = np.sqrt((lx - robot_x) ** 2 + (ly - robot_y) ** 2)
+        H[0][0] = (robot_x - lx) / p_den  # dx
+        H[0][1] = (robot_y - ly) / p_den  # dy
+        H[0][2] = 0  # dtheta
+        H[0][3+l*2] = (lx - robot_x) / p_den  # dlx
+        H[0][3+l*2+1] = (ly - robot_y) / p_den  # dly
+
+        alpha_den = (lx - robot_x) ** 2 + (ly - robot_y) ** 2
+
+        H[1][0] = (ly - robot_y) / alpha_den  # dx
+        H[1][1] = -(lx - robot_x) / alpha_den  # dy
+        H[1][2] = -1  # dtheta
+        H[1][3 + l * 2] = -(ly - robot_y) / alpha_den  # dlx
+        H[1][3 + l * 2 + 1] = (lx - robot_x) / alpha_den  # dly
+        print(delta)
+        print('-----')
+        print(H)
+        print('----')
+        print(p)
+        print('----')
+        print(R)
+        d = delta.T @ np.linalg.inv(H@p@H.T + R) @ delta
+        distances.append(d[0][0])
+    print('distances:', distances)
 
 
 i = 1
@@ -192,13 +251,18 @@ while i < N:
             ########### Prediction ###########
     """
     X = Xp.copy()
-    Xp = X + np.concatenate((Ts * np.array([Uf[i - 1] * np.cos(X[2]), Uf[i - 1] * np.sin(X[2]), Ua[i - 1]]), Xp_lower))
+    n_lower = len(X) - 3
+    Xp = X + np.concatenate((Ts * np.array([Uf[i - 1] * np.cos(X[2]), Uf[i - 1] * np.sin(X[2]), Ua[i - 1]]), [0]*(len(X) - 3)))
     dUpper_dx = np.array([[1, 0, -Ts * Uf[i - 1] * np.sin(X[2])],
                           [0, 1, Ts * Uf[i - 1] * np.cos(X[2])],
                           [0, 0, 1]])
     dLower_dx = np.eye(n_lower)
+    lower_zeros = np.zeros((n_lower, n_upper))
+    upper_zeros = np.zeros((n_upper, n_lower))
+
     F = np.block([[dUpper_dx, upper_zeros],
                   [lower_zeros, dLower_dx]])
+
     dupper_dw = np.array([[-Ts * np.cos(X[2]), 0],
                           [-Ts * np.sin(X[2]), 0],
                           [0, -Ts]])
@@ -207,14 +271,19 @@ while i < N:
                   [dlower_dw]])
     Q = Qturn if abs(Ua[i - 1]) > Wturn else Q_straight
     Pp = F @ Pp @ F.T + G @ Q @ G.T
-
-    for j in range:
-        for k in range:
-            pass
-
     """
         ########### Correction ###########
     """
+
+    # check the new measurements
+    for l in range(len(range_land[i])):
+        # for each new measurements find the min d_jk
+        range_m = range_land[i][l]
+        angle_m = angle_land[i][l]
+        d = max_likelihood(range_m, angle_m, Xp, Pp)
+
+        exit(0)
+    # initialize
     for l in range(len(index_land[i])):
         if index_land[i][l] not in checked_landmarks:  # Initialize
             checked_landmarks.append(index_land[i][l])
@@ -227,6 +296,8 @@ while i < N:
             Xp[n_upper + 2 * j + 1] = ly
 
     m = np.array([range_land[i], angle_land[i], index_land[i]])
+
+    # correcct
     Xp, Pp = correction(Xp, Pp, m)
 
     X_pred[i, :] = Xp
@@ -234,6 +305,7 @@ while i < N:
     P_pred_full[i, :] = Pp
 
     i += 1
+
 
 # take the first three columns for every row of X_pred
 
@@ -278,18 +350,12 @@ plt.legend(loc='upper right')
 
 fig.tight_layout()
 
-# Trajectory and Landmarks
+# Trajectory
 fig = plt.figure()
 ax1 = plt.subplot(2, 1, 1)
-ax1.plot(pose_true[:, 0], pose_true[:, 1], label=r'$x(t)$')
-ax1.plot(pose_pred[:, 0], pose_pred[:, 1], label=r'$\hat{x}(t)$', color='red', linestyle='--')
-ax1.plot(X_predod[:, 0], X_predod[:, 1], label=r'$\hat{x}_{odometry}(t)$', color='grey', linestyle='--')
-landmark_pred = landmark_pred.reshape(-1, 2)
-ax1.scatter(Landmarks[:, 0], Landmarks[:, 1], label='True Landmarks', color='red', marker='o', s=50, facecolors='none')
-
-ax1.scatter(landmark_pred[:, 0], landmark_pred[:, 1], label='Estimated Landmarks (Final)',
-            color='green', marker='x', s=100)
-
+ax1.plot(pose_true[:, 0], pose_true[:, 1], label=r'$x_1(t)$')
+ax1.plot(pose_pred[:, 0], pose_pred[:, 1], label=r'$\hat{x}_1(t)$', color='red', linestyle='--')
+plt.legend(loc='center')
 
 # Landmark positions
 landmark_pred = landmark_pred.reshape(-1, 2)
@@ -340,6 +406,7 @@ consistent = []
 radii_all = []
 fig, ax = plt.subplots(figsize=(8, 8))
 
+
 for j in range(Nland): #for all landmarks
     idx = n_upper + 2 * j
     L_true = Landmarks[j]
@@ -370,23 +437,19 @@ for j in range(Nland): #for all landmarks
 
     ax.add_patch(ellipse)
     # Plot landmark estimate as a point
-    ax.scatter(L_est[0], L_est[1], label='Estimated Landmarks (Final)',
-            color='red', marker='x')
-    if j==0:
-        ax.scatter(Landmarks[:, 0], Landmarks[:, 1], label='True Landmarks', color='green', marker='o', s=40,
-                   facecolors='none')
-        ax.legend(['Confidence Ellipse','Estimated Landmarks','True Landmarks'])
-
+    ax.plot(L_est[0], L_est[1], 'ro')
 ax.set_xlabel('X position')
 ax.set_ylabel('Y position')
 ax.set_title('Landmark position estimates with 99% confidence ellipses')
 ax.axis('equal')
 plt.grid(True)
-
+plt.show()
 all_good = True
 for lm in range(len(consistent)):
-    if consistent[lm] != np.True_:
-        print(f"Landmark {lm + 1} = NOT CONSISTENT!")
+    if consistent[lm] == np.True_:
+        print(f"Landmark {lm+1} = Consistent within confidence ellipse. ")
+    else:
+        print(f"Landmark {lm+1} = NOT CONSISTENT!")
         all_good = False
 
 if all_good:
