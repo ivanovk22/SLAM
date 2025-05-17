@@ -6,7 +6,7 @@ from scipy.linalg import block_diag
 
 plt.close('all')
 
-data = np.load('data_point_land_1.npz', allow_pickle=True)
+data = np.load('data_point_land_2.npz', allow_pickle=True)
 
 Meas = data['Meas']  # Landmark measurements
 Uf = data['Uf']  # measured forward velocity (odometry)
@@ -104,6 +104,39 @@ def calc_H_R(xp, indices): # calculates the H and R matrices
     R_new = np.kron(np.eye(len(indices)), R)
     return H, R_new
 
+def update_data(data, t, new_vector):
+    n_rows, current_cols = data.shape
+    v_len = len(new_vector)
+
+    if v_len > current_cols:
+        # Need to expand all rows to match the new vector length
+        padding = np.zeros((n_rows, v_len - current_cols))
+        data = np.hstack((data, padding))
+
+    # Pad new_vector if it's shorter than current number of columns
+    if v_len < data.shape[1]:
+        new_vector = np.pad(new_vector, (0, data.shape[1] - v_len))
+
+    data[t] = new_vector
+    return data
+
+def update_P_pred(data, t, new_vector):
+    n_rows, current_cols = data.shape
+    v_len = len(new_vector)
+
+    if v_len > current_cols:
+        # Need to expand all rows to match the new vector length
+        padding = np.full((n_rows, v_len - current_cols), fill_value=eta)
+        data = np.hstack((data, padding))
+
+    # Pad new_vector if it's shorter than current number of columns
+    if v_len < data.shape[1]:
+
+        new_vector = np.pad(new_vector, (eta, data.shape[1] - v_len))
+
+    data[t] = new_vector
+    return data
+
 def correction(xp, pp, M):
     ranges = M[0]
     angles = M[1]
@@ -150,6 +183,8 @@ Q_straight = Q.copy()
 """
            ########### Initialize and correct for t = 0 ###########
 """
+X_pred = np.empty((N, 0)) # as beginning 220x0
+P_pred = np.empty((N, 0)) # as beginning 220x0
 checked_landmarks = []
 indexes = []
 for l in range(len(range_land[0])): #This loop initializes the first landmarks, increases xp and pp size accordingly
@@ -169,14 +204,11 @@ for l in range(len(range_land[0])): #This loop initializes the first landmarks, 
 
 m = np.array([range_land[0], angle_land[0], indexes])
 Xp, Pp = correction(Xp, Pp, m)
+X_pred = update_data(X_pred, 0, Xp)
+P_pred = update_P_pred(P_pred, 0, np.diag(Pp))
 
 
-"""X_pred = [[]]
-P_pred = [[]]
-X_pred = np.
-P_pred[0, :] = np.diag(Pp)
-P_pred_full[0, :] = Pp
-"""
+
 """ to be done later
 #Odometry trajectory
 X_predod = np.empty((N, n))
@@ -192,7 +224,7 @@ n_upper = 3
 i = 1
 lower_threshold = 5.9915
 upper_threshold = 13.8155
-X_pred = np.empty((N, 3))
+
 while i < N:
     """
             ########### Prediction ###########
@@ -237,8 +269,6 @@ while i < N:
             distances.append(d[0][0])
         min_d_index = np.argmin(distances)
         min_d = distances[min_d_index]
-        print(min_d_index, min_d)
-        print(angle_land[i].shape)
 
         if min_d < lower_threshold: # measurement j belongs at the kth index
             indic.append(indexes[min_d_index])
@@ -271,31 +301,171 @@ while i < N:
                 pass
             else:
                 angle_land[i] = np.delete(angle_land[i], j)"""
-    print('to_be_deleted',to_be_deleted)
-    print(range_land[i].shape)
+
     to_be_deleted = np.array(to_be_deleted)
     for dele in range(len(to_be_deleted)):
-        print('sonaşama',range_land[i],to_be_deleted[dele])
         range_land[i] = np.delete(range_land[i], to_be_deleted[dele])
         angle_land[i] = np.delete(angle_land[i], to_be_deleted[dele])
         to_be_deleted = to_be_deleted - 1
-    print('predicted' , indic)
-    print(indexes)
-    print('real     ',index_land[i])
-    print('-'*30,i)
+
     m = np.array([range_land[i], angle_land[i], indic])
     Xp, Pp = correction(Xp, Pp, m)
 
-    X_pred[i, :] = Xp[0:3]
+    X_pred = update_data(X_pred, i, Xp)
+    P_pred = update_P_pred(P_pred, i, np.diag(Pp))
 
     i = i + 1
-print(X_pred)
 
+
+pose_pred = X_pred[:, :n_upper]
 pose_true = Pose
+landmark_pred = Xp[3:]
 
+T = np.arange(0, N * Ts, Ts) # Time
+# Plots and comparisons
+fig = plt.figure()
+ax1 = plt.subplot(3, 1, 1)
+ax1.plot(T, pose_true[:, 0], label=r'$x_1(t)$')
+ax1.plot(T, pose_pred[:, 0], label=r'$\hat{x}_1(t)$', color='red', linestyle='--')
+plt.xlabel("$t$")
+plt.ylabel("$x_1(t)$")
+plt.title("Velocity $x_1(t)$")
+plt.legend(loc='upper right')
+
+ax1 = plt.subplot(3, 1, 2)
+ax1.plot(T, pose_true[:, 1], label=r'$x_2(t)$')
+ax1.plot(T, pose_pred[:, 1], label=r'$\hat{x}_2(t)$', color='red', linestyle='--')
+plt.xlabel("$t$")
+plt.ylabel("$x_2(t)$")
+plt.title("Current $x_2(t)$")
+plt.legend(loc='upper right')
+
+ax1 = plt.subplot(3, 1, 3)
+ax1.plot(T, pose_true[:, 2], label=r'$\theta(t)$')
+ax1.plot(T, pose_pred[:, 2], label=r'$\hat{\theta}(t)$', color='red', linestyle='--')
+plt.xlabel("$t$ (s)")
+plt.ylabel(r"$\theta(t)$ (rad)")
+plt.title("Robot Orientation")
+plt.legend(loc='upper right')
+# plt.grid(True)
+fig.tight_layout()
+
+
+# Trajectory
 fig = plt.figure()
 ax1 = plt.subplot(2, 1, 1)
 ax1.plot(pose_true[:, 0], pose_true[:, 1], label=r'$x_1(t)$')
-ax1.plot(X_pred[:, 0], X_pred[:, 1], label=r'$\hat{x}_1(t)$', color='red', linestyle='--')
+ax1.plot(pose_pred[:, 0], pose_pred[:, 1], label=r'$\hat{x}_1(t)$', color='red', linestyle='--')
 plt.legend(loc='center')
+
+# Landmark positions
+landmark_pred = landmark_pred.reshape(-1, 2)
+fig = plt.figure()
+ax1 = plt.subplot(2, 1, 1)
+
+plt.scatter(Landmarks[:, 0], Landmarks[:, 1], label='True Landmarks', color='red', marker='o', s=50, facecolors='none')
+
+plt.scatter(landmark_pred[:, 0], landmark_pred[:, 1], label='Estimated Landmarks (Final)',
+            color='green', marker='x', s=100)
+
+plt.xlabel("X position (m)")
+plt.ylabel("Y position (m)")
+plt.title("Robot Trajectory and Landmarks")
+plt.legend()
+
+# Confidence intervals
+plt.figure(figsize=(6, 12))
+plt.subplot(311)
+plt.plot(T, pose_true[:, 0] - pose_pred[:, 0], 'r', T, 3 * np.sqrt(P_pred[:, 0]), 'b--', T, -3 * np.sqrt(P_pred[:, 0]),
+         'b--')
+plt.ylabel(r'$x(t)-\hat{x}(t)$')
+title = r'Estimation error (red) and $3\sigma$-confidence intervals (blue) for $x(t)$'
+plt.title(title)
+plt.axis([T[0], T[-1], -np.sqrt(P_pred[-1, 0]) * 20, np.sqrt(P_pred[-1, 0]) * 20])
+plt.subplot(312)
+plt.plot(T, pose_true[:, 1] - pose_pred[:, 1], 'r', T, 3 * np.sqrt(P_pred[:, 1]), 'b--', T, -3 * np.sqrt(P_pred[:, 1]),
+         'b--')
+plt.ylabel(r'$y(t)-\hat{y}(t)$')
+title = r'Estimation error (red) and $3\sigma$-confidence intervals (blue) for $y(t)$'
+plt.title(title)
+plt.axis([T[0], T[-1], -np.sqrt(P_pred[-1, 1]) * 20, np.sqrt(P_pred[-1, 1]) * 20])
+plt.subplot(313)
+plt.plot(T, 180 / np.pi * np.unwrap(pose_true[:, 2] - pose_pred[:, 2]), 'r', T, 3 * 180 / np.pi * np.sqrt(P_pred[:, 2]),
+         'b--', T,
+         -3 * 180 / np.pi * np.sqrt(P_pred[:, 2]), 'b--')
+plt.xlabel('$t$')
+plt.ylabel(r'$\theta(t)-\hat{\theta}(t)$')
+plt.title(r'Estimation error (red) and $3\sigma$-confidence intervals (blue) for $\theta(t)$')
+
+# Confidence ellipses
+r_x = 9.21  # 99% confidence ellipse
+# r_x = 20 # 99% confidence ellipse
+consistent = []
+radii_all = []
+fig, ax = plt.subplots(figsize=(8, 8))
+# sort the true landmarks corresponding to our indexes
+
+new_landmarks = np.zeros((18, 2))
+for l in range(len(indexes)):
+    lx = landmark_pred[l][0]
+    ly = landmark_pred[l][1]
+    # find the one with the smallest error
+    for l2 in range(len(Landmarks)):
+        if abs(lx - Landmarks[l2][0]) < 0.5 and abs(ly - Landmarks[l2][1]) < 0.5:
+            new_landmarks[l] = [Landmarks[l2][0], Landmarks[l2][1]]
+            break
+
+Landmarks = new_landmarks.copy()
+for j in range(Nland): #for all landmarks
+    singular = False
+    idx = n_upper + 2 * j
+    L_true = Landmarks[j]
+    L_est = X_pred[-1][idx:idx + 2]
+    Pj = Pp[idx:idx + 2, idx:idx + 2]
+
+    error = (L_true - L_est).reshape(-1, 1)
+    VTV = error.T @ np.linalg.inv(Pj) @ error
+
+    consistent.append(VTV[0][0] < r_x)
+
+    eigenvals, eigenvecs = np.linalg.eig(Pj)
+
+    # Sort eigenvalues and eigenvectors so largest eigenvalue comes first (major axis)
+    order = eigenvals.argsort()[::-1]
+    eigenvals = eigenvals[order]
+    eigenvecs = eigenvecs[:, order]
+
+    # Calculate ellipse angle in degrees
+    angle = np.arctan2(eigenvecs[1, 0], eigenvecs[0, 0]) * 180 / np.pi
+
+    # Calculate axes lengths (scaled by sqrt of chi-square quantile for confidence)
+    width, height = 2 * np.sqrt(eigenvals * r_x)  # factor 2 because width = 2*a, height = 2*b
+
+    # Create ellipse patch
+    ellipse = Ellipse(xy=L_est, width=width, height=height, angle=angle, edgecolor='blue', fc='None', lw=2)
+
+    ax.add_patch(ellipse)
+    # Plot landmark estimate as a point
+    ax.scatter(L_est[0], L_est[1], label='Estimated Landmarks (Final)',
+               color='red', marker='x')
+    if j == 0:
+        ax.scatter(Landmarks[:, 0], Landmarks[:, 1], label='True Landmarks', color='green', marker='o', s=40,
+                   facecolors='none')
+        ax.legend(['Confidence Ellipse', 'Estimated Landmarks', 'True Landmarks'])
+ax.set_xlabel('X position')
+ax.set_ylabel('Y position')
+ax.set_title('Landmark position estimates with 99% confidence ellipses')
+ax.axis('equal')
+plt.grid(True)
+
+all_good = True
+for lm in range(len(consistent)):
+    if consistent[lm] != np.True_:
+        print(f"Landmark {lm + 1} = NOT CONSISTENT!")
+        all_good = False
+if all_good:
+    print("All landmarks are consistent. All good!")
+else:
+    print("Error: One or more landmarks are inconsistent. :(")
+
 plt.show()
