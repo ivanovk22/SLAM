@@ -208,12 +208,7 @@ X_pred = update_data(X_pred, 0, Xp)
 P_pred = update_P_pred(P_pred, 0, np.diag(Pp))
 
 
-"""X_pred = [[]]
-P_pred = [[]]
-X_pred = np.
-P_pred[0, :] = np.diag(Pp)
-P_pred_full[0, :] = Pp
-"""
+
 """ to be done later
 #Odometry trajectory
 X_predod = np.empty((N, n))
@@ -274,8 +269,6 @@ while i < N:
             distances.append(d[0][0])
         min_d_index = np.argmin(distances)
         min_d = distances[min_d_index]
-        print(min_d_index, min_d)
-        print(angle_land[i].shape)
 
         if min_d < lower_threshold: # measurement j belongs at the kth index
             indic.append(indexes[min_d_index])
@@ -308,18 +301,13 @@ while i < N:
                 pass
             else:
                 angle_land[i] = np.delete(angle_land[i], j)"""
-    print('to_be_deleted',to_be_deleted)
-    print(range_land[i].shape)
+
     to_be_deleted = np.array(to_be_deleted)
     for dele in range(len(to_be_deleted)):
-        print('sonaşama',range_land[i],to_be_deleted[dele])
         range_land[i] = np.delete(range_land[i], to_be_deleted[dele])
         angle_land[i] = np.delete(angle_land[i], to_be_deleted[dele])
         to_be_deleted = to_be_deleted - 1
-    print('predicted' , indic)
-    print(indexes)
-    print('real     ',index_land[i])
-    print('-'*30,i)
+
     m = np.array([range_land[i], angle_land[i], indic])
     Xp, Pp = correction(Xp, Pp, m)
 
@@ -415,11 +403,10 @@ r_x = 9.21  # 99% confidence ellipse
 consistent = []
 radii_all = []
 fig, ax = plt.subplots(figsize=(8, 8))
-plt.show()
 # sort the true landmarks corresponding to our indexes
-"""
+
 new_landmarks = np.zeros((18, 2))
-for l in range(len(landmarks_map)):
+for l in range(len(indexes)):
     lx = landmark_pred[l][0]
     ly = landmark_pred[l][1]
     # find the one with the smallest error
@@ -470,16 +457,15 @@ ax.set_ylabel('Y position')
 ax.set_title('Landmark position estimates with 99% confidence ellipses')
 ax.axis('equal')
 plt.grid(True)
-# plt.show()
+
 all_good = True
-# for lm in range(len(consistent)):
-#     if consistent[lm] != np.True_:
-#         print(f"Landmark {lm + 1} = NOT CONSISTENT!")
-#         all_good = False
-#
-# if all_good:
-#     print("All landmarks are consistent. All good!")
-# else:
-#     print("Error: One or more landmarks are inconsistent. :(")
-#
-# plt.show()"""
+for lm in range(len(consistent)):
+    if consistent[lm] != np.True_:
+        print(f"Landmark {lm + 1} = NOT CONSISTENT!")
+        all_good = False
+if all_good:
+    print("All landmarks are consistent. All good!")
+else:
+    print("Error: One or more landmarks are inconsistent. :(")
+
+plt.show()
