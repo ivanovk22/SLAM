@@ -8,7 +8,7 @@ from scipy.linalg import block_diag
 
 plt.close('all')
 
-data = np.load('data_point_land_1.npz', allow_pickle=True)
+data = np.load('data_point_land_2.npz', allow_pickle=True)
 
 Meas = data['Meas']  # Landmark measurements
 Uf = data['Uf']  # measured forward velocity (odometry)
@@ -29,13 +29,9 @@ index_land = Meas.item()['land']  # landmark indices
 
 N = Uf.shape[0]  # Number of odometry measurements
 n_upper = 3  # upper system order: x,y,theta
-# upper_threshold = 13.8155
-upper_threshold = 14
+# upper_threshold = 14
+upper_threshold = 13.8155
 lower_threshold = 5.9915
-
-
-# upper_threshold = 7000
-# lower_threshold = 6000
 
 
 x0 = np.array([])  # initial states
@@ -46,7 +42,7 @@ x0 = append_to_array(x0, Pose[0, 2])
 # upper covariance
 lambda_ = 1e-6
 P_upper = lambda_ * np.eye(n_upper)  # uncertainty of x,y,theta
-eta = 1000
+# eta = 1000
 P0 = P_upper
 Xp = x0.copy()
 Pp = P0.copy()
@@ -83,6 +79,7 @@ X_pred = update_data(X_pred, 0, Xp)
 P_pred = update_P_pred(P_pred, 0, np.diag(Pp))
 
 i = 1
+
 while i < N:
     """
             ########### Prediction ###########
@@ -108,6 +105,8 @@ while i < N:
                   [dlower_dw]])
     Q = Qturn if abs(Ua[i - 1]) > Wturn else Q_straight
     Pp = F @ Pp @ F.T + G @ Q @ G.T
+    print(f'Prediction i:{i}, Xp: {Xp}')
+
     """
         ########### Correction ###########
     """
@@ -144,14 +143,16 @@ while i < N:
     if len(for_correction) > 0:
         for_correction = np.array(for_correction).T
         # correct
-        Pp = extend_P(Pp, number_of_new_initializations)
+
+        if number_of_new_initializations > 0:
+            Pp = extend_P(Pp, number_of_new_initializations)
+
         Xp, Pp = correction(Xp, Pp, for_correction, R)
 
 
     X_pred = update_data(X_pred, i, Xp)
     P_pred = update_P_pred(P_pred, i, np.diag(Pp))
     i += 1
-
 
 pose_pred = X_pred[:, :n_upper]
 pose_true = Pose
@@ -163,6 +164,7 @@ fig = plt.figure()
 ax1 = plt.subplot(3, 1, 1)
 ax1.plot(T, pose_true[:, 0], label=r'$x_1(t)$')
 ax1.plot(T, pose_pred[:, 0], label=r'$\hat{x}_1(t)$', color='red', linestyle='--')
+
 plt.xlabel("$t$")
 plt.ylabel("$x_1(t)$")
 plt.title("Velocity $x_1(t)$")
@@ -218,6 +220,8 @@ plt.ylabel(r'$x(t)-\hat{x}(t)$')
 title = r'Estimation error (red) and $3\sigma$-confidence intervals (blue) for $x(t)$'
 plt.title(title)
 plt.axis([T[0], T[-1], -np.sqrt(P_pred[-1, 0]) * 20, np.sqrt(P_pred[-1, 0]) * 20])
+plt.ylim(-0.4, 0.4)  # Set x-axis range
+
 plt.subplot(312)
 plt.plot(T, pose_true[:, 1] - pose_pred[:, 1], 'r', T, 3 * np.sqrt(P_pred[:, 1]), 'b--', T, -3 * np.sqrt(P_pred[:, 1]),
          'b--')
@@ -225,10 +229,14 @@ plt.ylabel(r'$y(t)-\hat{y}(t)$')
 title = r'Estimation error (red) and $3\sigma$-confidence intervals (blue) for $y(t)$'
 plt.title(title)
 plt.axis([T[0], T[-1], -np.sqrt(P_pred[-1, 1]) * 20, np.sqrt(P_pred[-1, 1]) * 20])
+plt.ylim(-0.5, 0.5)  # Set x-axis range
+
 plt.subplot(313)
 plt.plot(T, 180 / np.pi * np.unwrap(pose_true[:, 2] - pose_pred[:, 2]), 'r', T, 3 * 180 / np.pi * np.sqrt(P_pred[:, 2]),
          'b--', T,
          -3 * 180 / np.pi * np.sqrt(P_pred[:, 2]), 'b--')
+plt.ylim(-3, 3)  # Set x-axis range
+
 plt.xlabel('$t$')
 plt.ylabel(r'$\theta(t)-\hat{\theta}(t)$')
 plt.title(r'Estimation error (red) and $3\sigma$-confidence intervals (blue) for $\theta(t)$')
@@ -296,14 +304,14 @@ ax.axis('equal')
 plt.grid(True)
 # plt.show()
 all_good = True
-# for lm in range(len(consistent)):
-#     if consistent[lm] != np.True_:
-#         print(f"Landmark {lm + 1} = NOT CONSISTENT!")
-#         all_good = False
+for lm in range(len(consistent)):
+    if consistent[lm] != np.True_:
+        print(f"Landmark {lm + 1} = NOT CONSISTENT!")
+        all_good = False
+
+if all_good:
+    print("All landmarks are consistent. All good!")
+else:
+    print("Error: One or more landmarks are inconsistent. :(")
 #
-# if all_good:
-#     print("All landmarks are consistent. All good!")
-# else:
-#     print("Error: One or more landmarks are inconsistent. :(")
-#
-# plt.show()
+plt.show()
