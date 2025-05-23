@@ -6,7 +6,7 @@ from scipy.linalg import block_diag
 
 plt.close('all')
 
-data = np.load('data_point_land_2.npz', allow_pickle=True)
+data = np.load('data_point_land_1.npz', allow_pickle=True)
 
 Meas = data['Meas']  # Landmark measurements
 Uf = data['Uf']  # measured forward velocity (odometry)
@@ -162,7 +162,7 @@ def calc_d(xp,pp,range_, angle_, index):
     l_x = xp[n_upper + 2 * index]
     l_y = xp[n_upper + 2 * index + 1]
     delta_ =np.array([ mp - np.sqrt((l_x-xp[0])**2+(l_y-xp[1])**2),
-                      ma - (angle_wrap(np.atan2((l_y-xp[1]),(l_x-xp[0]))-xp[2]))])
+                      ma - (angle_wrap(np.arctan2((l_y-xp[1]),(l_x-xp[0]))-xp[2]))])
 
     #calculate H, R
     H, R = calc_H_R(xp, index+1)
