@@ -209,16 +209,17 @@ P_pred = update_P_pred(P_pred, 0, np.diag(Pp))
 
 
 
-""" to be done later
+
 #Odometry trajectory
 X_predod = np.empty((N, n))
 Xodometry = Xp.copy()
+Xodometry = Xodometry[0:3]
 for o in range(1,N):
     Xod = Xodometry.copy()
-    Xodometry = Xod + np.concatenate((Ts * np.array([Uf[o - 1] * np.cos(Xod[2]), Uf[o - 1] * np.sin(Xod[2]), Ua[o - 1]]), Xp_lower))
+    Xodometry = Xod + (Ts * np.array([Uf[o - 1] * np.cos(Xod[2]), Uf[o - 1] * np.sin(Xod[2]), Ua[o - 1]]))
     X_predod[o, :] = Xodometry
 print(f"X_predod.shape = {X_predod.shape}")
-"""
+
 
 n_upper = 3
 i = 1
@@ -356,6 +357,7 @@ fig = plt.figure()
 ax1 = plt.subplot(2, 1, 1)
 ax1.plot(pose_true[:, 0], pose_true[:, 1], label=r'$x_1(t)$')
 ax1.plot(pose_pred[:, 0], pose_pred[:, 1], label=r'$\hat{x}_1(t)$', color='red', linestyle='--')
+ax1.plot(X_predod[:, 0], X_predod[:, 1], label=r'$\hat{x}_{odometry}(t)$', color='grey', linestyle='--')
 plt.legend(loc='center')
 
 # Landmark positions
