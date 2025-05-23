@@ -357,7 +357,7 @@ fig = plt.figure()
 ax1 = plt.subplot(2, 1, 1)
 ax1.plot(pose_true[:, 0], pose_true[:, 1], label=r'$x_1(t)$')
 ax1.plot(pose_pred[:, 0], pose_pred[:, 1], label=r'$\hat{x}_1(t)$', color='red', linestyle='--')
-ax1.plot(X_predod[:, 0], X_predod[:, 1], label=r'$\hat{x}_1(t)$', color='grey', linestyle='--')
+ax1.plot(X_predod[:, 0], X_predod[:, 1], label=r'$\hat{x}_{odometry}(t)$', color='grey', linestyle='--')
 plt.legend(loc='center')
 
 # Landmark positions
