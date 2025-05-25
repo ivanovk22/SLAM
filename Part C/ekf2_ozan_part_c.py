@@ -4,6 +4,7 @@ from functions import *
 from matplotlib.patches import Ellipse
 import scipy
 from scipy.linalg import block_diag
+import sys
 
 plt.close('all')
 
@@ -132,7 +133,6 @@ def PlotMapSN(Obstacles):
     for i in range(len(Obstacles)):
         plt.fill(Obstacles[i][:,0], Obstacles[i][:,1], facecolor='lightgrey', edgecolor='black')
 
-
 def land_find(ranges,angles,prom, robot_x, robot_y, robot_theta):
     index_range = []
     peaks, prominence = scipy.signal.find_peaks(-ranges, prominence=prom)
@@ -156,11 +156,12 @@ def land_find(ranges,angles,prom, robot_x, robot_y, robot_theta):
         take_next = new_peaks[m] + previous_choice
         mp_next = ranges[take_next]
         ma_next = angles[take_next]
-        den = abs(ma_prev - ma_current) + 1e-10 #avoid dividing by zero
+        #den = abs(ma_prev - ma_current) + 1e-10 #avoid dividing by zero
+        den = previous_choice * np.pi / 180 #radians
         diff_x = abs(mp_current - mp_prev) / den #derivative
         diff_y = abs(mp_current - mp_next) / den #derivative
         diff = abs(diff_x - diff_y)
-        if diff> 4.2:
+        if diff > 1:
             final_peaks.append(new_peaks[m])
     new_ranges = []
     new_angles = []
@@ -195,9 +196,9 @@ n_upper = 3  # upper system order: x,y,theta
 # upper_threshold = 14
 # lower_threshold = 5.9915
 
-upper_threshold = 20
-lower_threshold = 4
-prom = 0.10 #prominence
+upper_threshold = 60 #33, 15, 60
+lower_threshold = 5 #4.9, 3, 5
+prom = 0.1 #prominence
 
 
 
@@ -268,7 +269,7 @@ X_pred = np.empty((N, 0)) # as beginning 220x0
 P_pred = np.empty((N, 0)) # as beginning 220x0
 checked_landmarks = []
 indexes = []
-print(range_land)
+#print(range_land)
 for l in range(len(range_land)): #This loop initializes the first landmarks, increases xp and pp size accordingly
     indexes.append(l+1) #not so sure about this one. maybe only using checked_landmarks can be enough
     checked_landmarks.append(l)
@@ -300,16 +301,20 @@ for o in range(1,N):
     Xod = Xodometry.copy()
     Xodometry = Xod + (Ts * np.array([Uf[o - 1] * np.cos(Xod[2]), Uf[o - 1] * np.sin(Xod[2]), Ua[o - 1]]))
     X_predod[o, :] = Xodometry
-print(f"X_predod.shape = {X_predod.shape}")
+#print(f"X_predod.shape = {X_predod.shape}")
 
 
 n_upper = 3
 i = 1
-lower_threshold = 5.9915
-upper_threshold = 20
-
 while i < N:
-    print(f"Calculating step = {i}")
+    percentage = i/N*100
+    if percentage % 1 == 0:
+        bar_fill = '-' * int(percentage)  # Make sure percentage doesn't exceed 100
+        bar_empty = ' ' * (100 - int(percentage))
+        progress_bar_string = f"{bar_fill}{bar_empty}:{percentage:3.0f}%"
+        output_string = f"\r{progress_bar_string}"
+        sys.stdout.write(output_string)
+        sys.stdout.flush()
     """
             ########### Prediction ###########
     """
@@ -333,6 +338,9 @@ while i < N:
                   [dlower_dw]])
     Q = Qturn if abs(Ua[i - 1]) > Wturn else Q_straight
     Pp = F @ Pp @ F.T + G @ Q @ G.T
+    """
+               ########### Correction ###########
+    """
     #maximum likelihood calculation
     range_land, angle_land = land_find(ranges[:, i], angles, prom, Xp[0], Xp[1], Xp[2])
     if len(range_land) == 0 :
@@ -340,8 +348,6 @@ while i < N:
         P_pred = update_P_pred(P_pred, i, np.diag(Pp))
         i = i + 1
         continue
-    print('range_land', len(range_land))
-    print('--------'*5)
     indic = []
     Xnew = Xp.copy()
     Pnew = Pp.copy()
@@ -378,21 +384,8 @@ while i < N:
             Pp = np.block([[Pp, np.zeros((Pp.shape[0], 2))],
                            [np.zeros((2, Pp.shape[0])), eta * np.eye(2)]])
 
-        else:
+        else: #do not use measurement
             to_be_deleted.append(j)
-            """ print('range',range_land[i],'j',j)
-            if len(range_land[i]) == 1:
-                range_land[i] = np.delete(range_land[i], 0)
-            elif len(range_land[i]) == 0:
-                pass
-            else:
-                range_land[i] = np.delete(range_land[i], j)
-            if len(angle_land[i]) == 1:
-                angle_land[i] = np.delete(angle_land[i], 0)
-            elif len(angle_land[i]) == 0:
-                pass
-            else:
-                angle_land[i] = np.delete(angle_land[i], j)"""
 
     to_be_deleted = np.array(to_be_deleted)
     for dele in range(len(to_be_deleted)):
@@ -407,7 +400,7 @@ while i < N:
     P_pred = update_P_pred(P_pred, i, np.diag(Pp))
 
     i = i + 1
-
+print('\n')
 
 pose_pred = X_pred[:, :n_upper]
 pose_true = Pose
@@ -463,6 +456,8 @@ plt.scatter(landmark_pred[:, 0], landmark_pred[:, 1], label='Estimated Landmarks
 PlotMapSN(Obstacles)
 plt.plot(pose_true[:, 0], pose_true[:, 1], label=r'$x_1(t)$')
 plt.plot(pose_pred[:, 0], pose_pred[:, 1], label=r'$\hat{x}_1(t)$', color='red', linestyle='--')
+#plt.plot(X_predod [:, 0], X_predod[:, 1], label=r'$\hat{x}_{odometry}(t)$', color='grey', linestyle='dotted')
+
 # plt.plot(trueMap[:,0],trueMap[:,1],'r.')
 
 plt.xlabel("X position (m)")
