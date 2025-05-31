@@ -1,53 +1,72 @@
 import numpy as np
 import matplotlib.pyplot as plt
+from ruamel.yaml.timestamp import TimeStamp
+
 from functions import *
 from matplotlib.patches import Ellipse
 import scipy
 from scipy.linalg import block_diag
+import sys
 
 plt.close('all')
 
-data = np.load('data_sim_lidar_1.npz', allow_pickle=True)
+data = np.load('complete_test.npz', allow_pickle=True)
+
+
 
 # Meas = data['Meas']  # Landmark measurements
 Uf = data['Uf']  # measured forward velocity (odometry)
 Ua = data['Ua']  # measured angular velocity (odometry)
-Q = data['Q']
-Qturn = data['Qturn']
-R = data['R']
-Ts = data['Ts']
-Wturn = data['wturn']  # treshold Wturn
-Pose = data['Pose']  # data to be used only for comparison (x(t), y(t), theta(t) of the robot)
+time_stamps = data['TimeStamp']
+Pose = data['PoseOdom']  # data to be used only for comparison (x(t), y(t), theta(t) of the robot)
 ranges = data['noisyRangeData']
 angles = data['angles']
-Obstacles = data["Obstacles"]
-trueMap = data["trueMap"]
+wheelvels_readings = data['wheelvels_readings']
+wheelvels_times = data['wheelvels_times']
 counter = 0
+Q = np.array([[1.0000000e-04, 0.0000000e+00],
+              [0.0000000e+00, 3.0461742e-06]])
 
-# print(angles)
+R = np.array([[1.00000000e-04, 0.00000000e+00],
+              [0.00000000e+00, 1.21846968e-05]])
 
-# print(Pose[:, 2])
+decrease_data = 2
+Uf = Uf[::decrease_data]
+Ua = Ua[::decrease_data]
+time_stamps = time_stamps[::decrease_data]
+Pose = Pose[::decrease_data]
+ranges=ranges[:, ::decrease_data]
+
+
+print('Uf:', Uf.shape)
+print("Ua", Ua.shape)
+print('Time Stamps:', time_stamps.shape)
+print(time_stamps[len(time_stamps)-1])
+# for t in time_stamps:
+#     print(t)
+# print('Pose:', Pose.shape)
+# print('ranges:', ranges.shape)
+# print('angles:', angles.shape)
+# exit()
+fl = ranges.flatten()
+new_arr = fl[np.isfinite(fl)]
+
+max_val = np.max(new_arr)
+#
+# for i in range(len(ranges[:, 0])):
+#     print(f"i = {i}, range: {ranges[:, 0][i]}, angles: {np.degrees(angles[i])}")
 #
 # exit()
-
-for i in Pose[:, 2]:
-    # print(i)
-    print(np.rad2deg(i))
-exit()
-
-
+# fig = plt.figure()
+# plt.plot(Pose[:, 0], Pose[:, 1], label=r'$x_1(t)$')
+# plt.show()
 
 N = Uf.shape[0]  # Number of odometry measurements
 n_upper = 3  # upper system order: x,y,theta
-# upper_threshold = 14
-# lower_threshold = 5.9915
 
 # upper_threshold = 50
 # lower_threshold = 5
-prom = 0.10 #prominence
-
-
-
+prom = 0.20 #prominence
 x0 = np.array([])  # initial states
 x0 = append_to_array(x0, Pose[0, 0])
 x0 = append_to_array(x0, Pose[0, 1])
@@ -64,57 +83,58 @@ X_pred = np.empty((N, 0)) # as beginning 220x0
 P_pred = np.empty((N, 0)) # as beginning 220x0
 Q_straight = Q.copy()
 landmarks_map = []
-
-def PlotMapSN(Obstacles):
-    # function that plots map with polygonal obstacles
-    for i in range(len(Obstacles)):
-        plt.fill(Obstacles[i][:,0], Obstacles[i][:,1], facecolor='lightgrey', edgecolor='black')
+# for row in len(ranges[0])
 
 
-def land_find(ranges, angles, prom, robot_x, robot_y, robot_theta):
+def land_find(ranges, angles, prom):
+
     index_range = []
     peaks, prominence = scipy.signal.find_peaks(-ranges, prominence=prom)
+
     for c in range(len(angles)):
         if ranges[c] >= 0:
             index_range.append(1)
         else:
             index_range.append(0)
     new_peaks = []
+
     for p in peaks:
         if index_range[p] == 1:
             new_peaks.append(int(p))
-    print('new peaks:', new_peaks)
+
     final_peaks = []
 
     for m in range(len(new_peaks)):
-        previous_choice = 3
-        if new_peaks[m] + previous_choice >= len(ranges) - 1:
-            previous_choice = len(ranges) - new_peaks[m] - 1
+        mp_current = ranges[new_peaks[m]]
+        # ma_current = angles[new_peaks[m]]
+        previous_choice = next_choice = 1
+        if new_peaks[m] + next_choice >= len(ranges) - 1:
+            take_next = next_choice - (len(ranges) - new_peaks[m])
+        else:
+            take_next = new_peaks[m] + next_choice
 
         take_previous = new_peaks[m] - previous_choice
+        # print(f'range: {ranges[new_peaks[m]]}, angle: {np.degrees(angles[new_peaks[m]])}')
+        # print(f'curr: {new_peaks[m]}, prev: {take_previous}, next: {take_next}')
         mp_prev = ranges[take_previous]
-        ma_prev = angles[take_previous]
-        lx_prev = robot_x + mp_prev * np.cos(robot_theta + ma_prev)
-        ly_prev = robot_y + mp_prev * np.sin(robot_theta + ma_prev)
-        take_next = new_peaks[m] + previous_choice
+        # ma_prev = angles[take_previous]
         mp_next = ranges[take_next]
-        ma_next = angles[take_next]
-        lx_next = robot_x + mp_next * np.cos(robot_theta + ma_next)
-        ly_next = robot_y + mp_next * np.sin(robot_theta + ma_next)
-        diff_x = abs(lx_prev - lx_next)
-        diff_y = abs(ly_prev - ly_next)
-        print(f'diff_x = {diff_x}, diff_y = {diff_y}')
-        # THE REAL MINIMUM JUST FOR PRINTING
-        mp_real = ranges[new_peaks[m]]
-        ma_real = angles[new_peaks[m]]
-        lx_real = robot_x + mp_real * np.cos(robot_theta + ma_real)
-        ly_real = robot_y + mp_real * np.cos(robot_theta + ma_real)
-        print(f"minimum: x = {lx_real}, y = {ly_real}")
-        parameter = 0.8
-        if diff_x > parameter or diff_y > parameter:
+        # ma_next = angles[take_next]
+
+        # den = abs(ma_prev - ma_current) + 1e-10 #avoid dividing by zero
+        # den = previous_choice * np.pi / 180  # radians
+        # print(f'mp_current: {mp_current}, mp_prev: {mp_prev}, mp_next: {mp_next}')
+
+        # print(f'diff x: {abs(mp_current - mp_prev)}')
+        # print(f'diff y: {abs(mp_current - mp_next)}')
+        diff_prev = abs(mp_current - mp_prev)  # derivative
+        diff_next = abs(mp_current - mp_next)  # derivative
+        # diff = abs(diff_x - diff_y)
+        # print(f'dif prev = {diff_prev}, dif next = {diff_next}, ')
+        # print('----------------------------------')
+        threshold = 0.8
+        if diff_prev > threshold or diff_next > threshold:
             final_peaks.append(new_peaks[m])
-    # print(final_peaks)
-    print('------------------------')
     new_ranges = []
     new_angles = []
     for index in final_peaks:
@@ -126,12 +146,37 @@ def land_find(ranges, angles, prom, robot_x, robot_y, robot_theta):
            ########### Initialize and correct for t = 0 ###########
 """
 
-range_land, angle_land = land_find(ranges[:, 0], angles, prom, Xp[0], Xp[1], Xp[2])
-# print(range_land)
-# print(angle_land)
+new_ranges = np.empty((ranges.shape[0], ranges.shape[1]))
+# print(len(ranges[0]))
 #
-# # print('range_land', range_land)
 # exit()
+ch = 0
+left = 0
+for row in range(ranges.shape[0]):
+    for col in range(ranges.shape[1]):
+        if np.isinf(ranges[row][col]) or ranges[row][col] > 2:
+            new_ranges[row][col] = -1
+            ch += 1
+        else:
+            new_ranges[row][col] = ranges[row][col]
+            left += 1
+print('changed', ch)
+print('left', left)
+# exit()
+ranges = new_ranges.copy()
+# for i in range(len(new_ranges)):
+#     print(new_ranges[i][:80])
+#     print(ranges[i][:80])
+#     print('-----')
+#     if i == 3:
+#         break
+
+
+
+
+range_land, angle_land = land_find(ranges[:, 0], angles, prom)
+
+
 for l in range(len(range_land)):
     if range_land[l] not in landmarks_map:  # Initialize
         landmarks_map.append(len(landmarks_map))
@@ -150,18 +195,30 @@ for i in range(len(landmarks_map)):
     to_correct.append([range_land[i], angle_land[i], landmarks_map[i]])
 to_correct = np.array(to_correct).T
 Pp = extend_P(Pp, len(range_land))
-
-Xp, Pp = correction(Xp, Pp, to_correct, R)
+if len(to_correct) > 0:
+    Xp, Pp = correction(Xp, Pp, to_correct, R)
 X_pred = update_data(X_pred, 0, Xp)
 P_pred = update_P_pred(P_pred, 0, np.diag(Pp))
 
 i = 1
-while i < 20:
+ts_prev = time_stamps[0]
+print(f'Xp initial len: {len(Xp)}, Xp: {Xp}')
+to_check = 400
+while i < to_check:
+    print(f'i = {i}, len(Xp) = {len(Xp)}')
+    # percentage = int(i / N * 100)
+    # if percentage % 1 == 0:
+    #     bar_fill = '-' * int(percentage)  # Make sure percentage doesn't exceed 100
+    #     bar_empty = ' ' * (100 - int(percentage))
+    #     progress_bar_string = f"{bar_fill}{bar_empty}:{percentage:3.0f}%"
+    #     output_string = f"\r{progress_bar_string}"
+    #     sys.stdout.write(output_string)
+    #     sys.stdout.flush()
     """
             ########### Prediction ###########
     """
     X = Xp.copy()
-
+    Ts = time_stamps[i] - ts_prev
     n_lower = len(X) - 3
     Xp = X + np.concatenate((Ts * np.array([Uf[i - 1] * np.cos(X[2]), Uf[i - 1] * np.sin(X[2]), Ua[i - 1]]), [0]*(len(X) - 3)))
     dUpper_dx = np.array([[1, 0, -Ts * Uf[i - 1] * np.sin(X[2])],
@@ -180,7 +237,7 @@ while i < 20:
     dlower_dw = np.zeros((n_lower, 2))
     G = np.block([[dupper_dw],
                   [dlower_dw]])
-    Q = Qturn if abs(Ua[i - 1]) > Wturn else Q_straight
+    # Q = Qturn if abs(Ua[i - 1]) > Wturn else Q_straight
     Pp = F @ Pp @ F.T + G @ Q @ G.T
 
 
@@ -189,20 +246,18 @@ while i < 20:
     """
     for_correction = []
     number_of_new_initializations = 0
-    print(i)
-    range_land, angle_land = land_find(ranges[:, i], angles, prom, Xp[0], Xp[1], Xp[2])
+    range_land, angle_land = land_find(ranges[:, i], angles, prom)
 
     # check the new measurements
     Xp_new = Xp.copy()
-    upper_threshold = 50
-    lower_threshold = 6
-    checker = 110
+    upper_threshold = 60
+    lower_threshold = 5
     for l in range(len(range_land)):
         # for each new measurements find the min d_jk
         range_m = range_land[l]
         angle_m = angle_land[l]
         d_min, index_of_landmark = max_likelihood(range_m, angle_m, Xp, Pp, R)
-
+        print(f'd_min: {d_min}')
 
         # HAVE TO ASSOCIATE EACH MEASUREMENT WITH A LANDMARK INDEX
         if d_min < lower_threshold:
@@ -224,7 +279,7 @@ while i < 20:
 
 
     Xp = Xp_new.copy()
-
+    print(f'Xp before correction len: {len(Xp)},')
     if len(for_correction) > 0:
         for_correction = np.array(for_correction).T
         # correct
@@ -236,43 +291,48 @@ while i < 20:
 
     X_pred = update_data(X_pred, i, Xp)
     P_pred = update_P_pred(P_pred, i, np.diag(Pp))
-
+    ts_prev = time_stamps[i]
+    print('----------------------------')
     i += 1
 
 
-pose_pred = X_pred[:, :n_upper]
-pose_true = Pose
+pose_pred = X_pred[:, :n_upper][:to_check]
+pose_true = Pose[:to_check]
+# print('true pose:', pose_true)
+# print('predicted pose', pose_pred)
+# exit()
 landmark_pred = Xp[3:]
 
-T = np.arange(0, N * Ts, Ts) # Time
-
+# T = np.arange(0, N * Ts, Ts) # Time
+T = time_stamps.copy() # Time
+T = T[:to_check]
 # Plots and comparisons
-# fig = plt.figure()
-# ax1 = plt.subplot(3, 1, 1)
-# ax1.plot(T, pose_true[:, 0], label=r'$x_1(t)$')
-# ax1.plot(T, pose_pred[:, 0], label=r'$\hat{x}_1(t)$', color='red', linestyle='--')
-# plt.xlabel("$t$")
-# plt.ylabel("$x_1(t)$")
-# plt.title("Velocity $x_1(t)$")
-# plt.legend(loc='upper right')
-#
-# ax1 = plt.subplot(3, 1, 2)
-# ax1.plot(T, pose_true[:, 1], label=r'$x_2(t)$')
-# ax1.plot(T, pose_pred[:, 1], label=r'$\hat{x}_2(t)$', color='red', linestyle='--')
-# plt.xlabel("$t$")
-# plt.ylabel("$x_2(t)$")
-# plt.title("Current $x_2(t)$")
-# plt.legend(loc='upper right')
-#
-# ax1 = plt.subplot(3, 1, 3)
-# ax1.plot(T, pose_true[:, 2], label=r'$\theta(t)$')
-# ax1.plot(T, pose_pred[:, 2], label=r'$\hat{\theta}(t)$', color='red', linestyle='--')
-# plt.xlabel("$t$ (s)")
-# plt.ylabel(r"$\theta(t)$ (rad)")
-# plt.title("Robot Orientation")
-# plt.legend(loc='upper right')
-# # plt.grid(True)
-# fig.tight_layout()
+fig = plt.figure()
+ax1 = plt.subplot(3, 1, 1)
+ax1.plot(T, pose_true[:, 0], label=r'$x_1(t)$')
+ax1.plot(T, pose_pred[:, 0], label=r'$\hat{x}_1(t)$', color='red', linestyle='--')
+plt.xlabel("$t$")
+plt.ylabel("$x_1(t)$")
+plt.title("Velocity $x_1(t)$")
+plt.legend(loc='upper right')
+
+ax1 = plt.subplot(3, 1, 2)
+ax1.plot(T, pose_true[:, 1], label=r'$x_2(t)$')
+ax1.plot(T, pose_pred[:, 1], label=r'$\hat{x}_2(t)$', color='red', linestyle='--')
+plt.xlabel("$t$")
+plt.ylabel("$x_2(t)$")
+plt.title("Current $x_2(t)$")
+plt.legend(loc='upper right')
+
+ax1 = plt.subplot(3, 1, 3)
+ax1.plot(T, pose_true[:, 2], label=r'$\theta(t)$')
+ax1.plot(T, pose_pred[:, 2], label=r'$\hat{\theta}(t)$', color='red', linestyle='--')
+plt.xlabel("$t$ (s)")
+plt.ylabel(r"$\theta(t)$ (rad)")
+plt.title("Robot Orientation")
+plt.legend(loc='upper right')
+# plt.grid(True)
+fig.tight_layout()
 
 
 # Trajectory
@@ -285,13 +345,11 @@ T = np.arange(0, N * Ts, Ts) # Time
 # Landmark positions
 landmark_pred = landmark_pred.reshape(-1, 2)
 print('num landmarks:', len(landmark_pred))
-print(landmark_pred)
 fig = plt.figure()
 # ax1 = plt.subplot(2, 1, 1)
 
 plt.scatter(landmark_pred[:, 0], landmark_pred[:, 1], label='Estimated Landmarks (Final)',
             color='green', marker='o', s=10)
-PlotMapSN(Obstacles)
 plt.plot(pose_true[:, 0], pose_true[:, 1], label=r'$x_1(t)$')
 plt.plot(pose_pred[:, 0], pose_pred[:, 1], label=r'$\hat{x}_1(t)$', color='red', linestyle='--')
 # plt.plot(trueMap[:,0],trueMap[:,1],'r.')
