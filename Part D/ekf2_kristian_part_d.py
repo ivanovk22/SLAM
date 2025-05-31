@@ -30,18 +30,20 @@ Q = np.array([[1.0000000e-04, 0.0000000e+00],
 R = np.array([[1.00000000e-04, 0.00000000e+00],
               [0.00000000e+00, 1.21846968e-05]])
 
-decrease_data = 2
-Uf = Uf[::decrease_data]
-Ua = Ua[::decrease_data]
-time_stamps = time_stamps[::decrease_data]
-Pose = Pose[::decrease_data]
-ranges=ranges[:, ::decrease_data]
+# decrease_data = 2
+# Uf = Uf[::decrease_data]
+# Ua = Ua[::decrease_data]
+# time_stamps = time_stamps[::decrease_data]
+# Pose = Pose[::decrease_data]
+# ranges=ranges[:, ::decrease_data]
 
 
 print('Uf:', Uf.shape)
 print("Ua", Ua.shape)
 print('Time Stamps:', time_stamps.shape)
-print(time_stamps[len(time_stamps)-1])
+for a in angles:
+    print(np.degrees(a))
+exit()
 # for t in time_stamps:
 #     print(t)
 # print('Pose:', Pose.shape)
@@ -66,7 +68,7 @@ n_upper = 3  # upper system order: x,y,theta
 
 # upper_threshold = 50
 # lower_threshold = 5
-prom = 0.20 #prominence
+prom = 0.15 #prominence
 x0 = np.array([])  # initial states
 x0 = append_to_array(x0, Pose[0, 0])
 x0 = append_to_array(x0, Pose[0, 1])
@@ -132,7 +134,7 @@ def land_find(ranges, angles, prom):
         # diff = abs(diff_x - diff_y)
         # print(f'dif prev = {diff_prev}, dif next = {diff_next}, ')
         # print('----------------------------------')
-        threshold = 0.8
+        threshold = 1
         if diff_prev > threshold or diff_next > threshold:
             final_peaks.append(new_peaks[m])
     new_ranges = []
@@ -147,35 +149,18 @@ def land_find(ranges, angles, prom):
 """
 
 new_ranges = np.empty((ranges.shape[0], ranges.shape[1]))
-# print(len(ranges[0]))
-#
-# exit()
-ch = 0
 left = 0
 for row in range(ranges.shape[0]):
     for col in range(ranges.shape[1]):
         if np.isinf(ranges[row][col]) or ranges[row][col] > 2:
             new_ranges[row][col] = -1
-            ch += 1
         else:
             new_ranges[row][col] = ranges[row][col]
             left += 1
-print('changed', ch)
 print('left', left)
-# exit()
+
 ranges = new_ranges.copy()
-# for i in range(len(new_ranges)):
-#     print(new_ranges[i][:80])
-#     print(ranges[i][:80])
-#     print('-----')
-#     if i == 3:
-#         break
-
-
-
-
 range_land, angle_land = land_find(ranges[:, 0], angles, prom)
-
 
 for l in range(len(range_land)):
     if range_land[l] not in landmarks_map:  # Initialize
@@ -204,6 +189,7 @@ i = 1
 ts_prev = time_stamps[0]
 print(f'Xp initial len: {len(Xp)}, Xp: {Xp}')
 to_check = 400
+count_old = 0
 while i < to_check:
     print(f'i = {i}, len(Xp) = {len(Xp)}')
     # percentage = int(i / N * 100)
@@ -257,10 +243,11 @@ while i < to_check:
         range_m = range_land[l]
         angle_m = angle_land[l]
         d_min, index_of_landmark = max_likelihood(range_m, angle_m, Xp, Pp, R)
-        print(f'd_min: {d_min}')
+        # print(f'd_min: {d_min}')
 
         # HAVE TO ASSOCIATE EACH MEASUREMENT WITH A LANDMARK INDEX
         if d_min < lower_threshold:
+            # print(f'OLD ONE, numer: {count_old}')
             # old one make a vector [range, angle, corresponding landmark index]
             for_correction.append([range_m, angle_m, index_of_landmark])
 
@@ -276,6 +263,10 @@ while i < to_check:
             Xp_new = append_to_array(Xp_new, lx)
             Xp_new = append_to_array(Xp_new, ly)
             for_correction.append([range_m, angle_m, len(landmarks_map) - 1])
+
+        if d_min > lower_threshold and d_min < upper_threshold:
+            count_old += 1
+            print('IN Between: ', count_old)
 
 
     Xp = Xp_new.copy()
