@@ -11,10 +11,6 @@ import sys
 plt.close('all')
 
 data = np.load('complete_test.npz', allow_pickle=True)
-
-
-
-# Meas = data['Meas']  # Landmark measurements
 Uf = data['Uf']  # measured forward velocity (odometry)
 Ua = data['Ua']  # measured angular velocity (odometry)
 time_stamps = data['TimeStamp']
@@ -30,6 +26,63 @@ Q = np.array([[1.0000000e-04, 0.0000000e+00],
 R = np.array([[1.00000000e-04, 0.00000000e+00],
               [0.00000000e+00, 1.21846968e-05]])
 
+# R = np.array([[1.00000000e-03, 0.00000000e+00],
+#               [0.00000000e+00, 1.00000000e-06]])
+# Q = R.copy()
+
+
+def find_inf_intervals(column, pad=3):
+    length = len(column)
+    is_inf = np.isinf(column)
+    intervals = []
+
+    start = None
+    for i, val in enumerate(is_inf):
+        if val and start is None:
+            start = i
+        elif not val and start is not None:
+            end = i - 1
+            padded_start = (start - pad) % length
+            padded_end = (end + pad) % length
+            intervals.append((padded_start, padded_end))
+            start = None
+    if start is not None:
+        end = length - 1
+        padded_start = (start - pad) % length
+        padded_end = (end + pad) % length
+        intervals.append((padded_start, padded_end))
+    return intervals
+
+def expand_wrapped_intervals(intervals, length=1080):
+    indices = set()
+    for start, end in intervals:
+        if start <= end:
+            # Normal case: just range from start to end
+            indices.update(range(start, end + 1))
+        else:
+            # Wrapped case: from start to end of array, then 0 to end
+            indices.update(range(start, length))
+            indices.update(range(0, end + 1))
+    return indices
+# Iterate over all columns and print inf intervals
+# max_dist = 0
+# for col in range(ranges.shape[1]):
+#     # print(f'-------------{col}----------------')
+#     column = ranges[:, col]
+#     inf_intervals = find_inf_intervals(column)
+#     if inf_intervals:
+#         indices = expand_wrapped_intervals(inf_intervals)
+#         # for interval in inf_intervals:
+#         #     dist = interval[1] - interval[0]
+#         #     if dist > max_dist:
+#         #         max_dist = dist
+#         print(f"Column {col}: {inf_intervals}")
+#         print(f'indices: {indices}')
+#
+#     if col == 3:
+#         break
+# print(max_dist)
+# exit()
 # decrease_data = 2
 # Uf = Uf[::decrease_data]
 # Ua = Ua[::decrease_data]
@@ -37,38 +90,35 @@ R = np.array([[1.00000000e-04, 0.00000000e+00],
 # Pose = Pose[::decrease_data]
 # ranges=ranges[:, ::decrease_data]
 
-
-print('Uf:', Uf.shape)
-print("Ua", Ua.shape)
-print('Time Stamps:', time_stamps.shape)
-for a in angles:
-    print(np.degrees(a))
-exit()
 # for t in time_stamps:
 #     print(t)
 # print('Pose:', Pose.shape)
 # print('ranges:', ranges.shape)
 # print('angles:', angles.shape)
 # exit()
-fl = ranges.flatten()
-new_arr = fl[np.isfinite(fl)]
-
-max_val = np.max(new_arr)
+# fl = ranges.flatten()
+# new_arr = fl[np.isfinite(fl)]
 #
+# max_val = np.max(new_arr)
+
 # for i in range(len(ranges[:, 0])):
 #     print(f"i = {i}, range: {ranges[:, 0][i]}, angles: {np.degrees(angles[i])}")
 #
 # exit()
 # fig = plt.figure()
-# plt.plot(Pose[:, 0], Pose[:, 1], label=r'$x_1(t)$')
+# plt.plot(Pose[:, 0][:800], Pose[:, 1][:800], label=r'$x_1(t)$')
 # plt.show()
+# exit()
 
 N = Uf.shape[0]  # Number of odometry measurements
 n_upper = 3  # upper system order: x,y,theta
 
 # upper_threshold = 50
 # lower_threshold = 5
-prom = 0.15 #prominence
+"""-------------------------------PROMINENCE HERE ----------------------------------"""
+prom = (0.1, 1.1) #prominence
+
+
 x0 = np.array([])  # initial states
 x0 = append_to_array(x0, Pose[0, 0])
 x0 = append_to_array(x0, Pose[0, 1])
@@ -89,52 +139,38 @@ landmarks_map = []
 
 
 def land_find(ranges, angles, prom):
+    inf_intervals = find_inf_intervals(ranges)
+    previous_choice = next_choice = 4
+    to_exclude = expand_wrapped_intervals(inf_intervals, previous_choice)
 
     index_range = []
     peaks, prominence = scipy.signal.find_peaks(-ranges, prominence=prom)
-
     for c in range(len(angles)):
-        if ranges[c] >= 0:
+        if ranges[c] >= 0 and np.isinf(ranges[c]) == False:
             index_range.append(1)
         else:
             index_range.append(0)
     new_peaks = []
-
+    METERS_THRESHOLD = 3
     for p in peaks:
-        if index_range[p] == 1:
+        if index_range[p] == 1 and p not in to_exclude and ranges[p] < METERS_THRESHOLD:
             new_peaks.append(int(p))
-
     final_peaks = []
-
     for m in range(len(new_peaks)):
         mp_current = ranges[new_peaks[m]]
-        # ma_current = angles[new_peaks[m]]
-        previous_choice = next_choice = 1
         if new_peaks[m] + next_choice >= len(ranges) - 1:
             take_next = next_choice - (len(ranges) - new_peaks[m])
         else:
             take_next = new_peaks[m] + next_choice
 
         take_previous = new_peaks[m] - previous_choice
-        # print(f'range: {ranges[new_peaks[m]]}, angle: {np.degrees(angles[new_peaks[m]])}')
-        # print(f'curr: {new_peaks[m]}, prev: {take_previous}, next: {take_next}')
         mp_prev = ranges[take_previous]
-        # ma_prev = angles[take_previous]
         mp_next = ranges[take_next]
-        # ma_next = angles[take_next]
 
-        # den = abs(ma_prev - ma_current) + 1e-10 #avoid dividing by zero
-        # den = previous_choice * np.pi / 180  # radians
-        # print(f'mp_current: {mp_current}, mp_prev: {mp_prev}, mp_next: {mp_next}')
-
-        # print(f'diff x: {abs(mp_current - mp_prev)}')
-        # print(f'diff y: {abs(mp_current - mp_next)}')
         diff_prev = abs(mp_current - mp_prev)  # derivative
         diff_next = abs(mp_current - mp_next)  # derivative
-        # diff = abs(diff_x - diff_y)
-        # print(f'dif prev = {diff_prev}, dif next = {diff_next}, ')
-        # print('----------------------------------')
-        threshold = 1
+
+        threshold = 0.3
         if diff_prev > threshold or diff_next > threshold:
             final_peaks.append(new_peaks[m])
     new_ranges = []
@@ -148,18 +184,21 @@ def land_find(ranges, angles, prom):
            ########### Initialize and correct for t = 0 ###########
 """
 
-new_ranges = np.empty((ranges.shape[0], ranges.shape[1]))
-left = 0
-for row in range(ranges.shape[0]):
-    for col in range(ranges.shape[1]):
-        if np.isinf(ranges[row][col]) or ranges[row][col] > 2:
-            new_ranges[row][col] = -1
-        else:
-            new_ranges[row][col] = ranges[row][col]
-            left += 1
-print('left', left)
+# new_ranges = np.empty((ranges.shape[0], ranges.shape[1]))
+# left = 0
 
-ranges = new_ranges.copy()
+
+# METERS_THRESHOLD = 3
+# for row in range(ranges.shape[0]):
+#     for col in range(ranges.shape[1]):
+#         if ranges[row][col] > METERS_THRESHOLD:
+#             new_ranges[row][col] = np.inf
+#         else:
+#             new_ranges[row][col] = ranges[row][col]
+#             left += 1
+# print('left', left)
+
+# ranges = new_ranges.copy()
 range_land, angle_land = land_find(ranges[:, 0], angles, prom)
 
 for l in range(len(range_land)):
@@ -188,18 +227,11 @@ P_pred = update_P_pred(P_pred, 0, np.diag(Pp))
 i = 1
 ts_prev = time_stamps[0]
 print(f'Xp initial len: {len(Xp)}, Xp: {Xp}')
-to_check = 400
+to_check = 2000
 count_old = 0
 while i < to_check:
-    print(f'i = {i}, len(Xp) = {len(Xp)}')
-    # percentage = int(i / N * 100)
-    # if percentage % 1 == 0:
-    #     bar_fill = '-' * int(percentage)  # Make sure percentage doesn't exceed 100
-    #     bar_empty = ' ' * (100 - int(percentage))
-    #     progress_bar_string = f"{bar_fill}{bar_empty}:{percentage:3.0f}%"
-    #     output_string = f"\r{progress_bar_string}"
-    #     sys.stdout.write(output_string)
-    #     sys.stdout.flush()
+    print(f'i = {i}, Xp = {len(Xp)}')
+
     """
             ########### Prediction ###########
     """
@@ -264,13 +296,13 @@ while i < to_check:
             Xp_new = append_to_array(Xp_new, ly)
             for_correction.append([range_m, angle_m, len(landmarks_map) - 1])
 
-        if d_min > lower_threshold and d_min < upper_threshold:
-            count_old += 1
-            print('IN Between: ', count_old)
+        # if d_min > lower_threshold and d_min < upper_threshold:
+        #     count_old += 1
+        #     print('IN Between: ', count_old)
 
 
     Xp = Xp_new.copy()
-    print(f'Xp before correction len: {len(Xp)},')
+    # print(f'Xp before correction: {Xp},')
     if len(for_correction) > 0:
         for_correction = np.array(for_correction).T
         # correct
@@ -279,11 +311,12 @@ while i < to_check:
 
         Xp, Pp = correction(Xp, Pp, for_correction, R)
 
+    # print(f'Xp after correction: {Xp},')
 
     X_pred = update_data(X_pred, i, Xp)
     P_pred = update_P_pred(P_pred, i, np.diag(Pp))
     ts_prev = time_stamps[i]
-    print('----------------------------')
+    # print('----------------------------')
     i += 1
 
 
