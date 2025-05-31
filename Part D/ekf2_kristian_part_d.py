@@ -20,11 +20,11 @@ angles = data['angles']
 wheelvels_readings = data['wheelvels_readings']
 wheelvels_times = data['wheelvels_times']
 counter = 0
-Q = np.array([[1.0000000e-04, 0.0000000e+00],
-              [0.0000000e+00, 3.0461742e-06]])
+Q = np.array([[1.0000000e-07, 0.0000000e+00],
+              [0.0000000e+00, 1.0000000e-07]])
 
 R = np.array([[1.00000000e-04, 0.00000000e+00],
-              [0.00000000e+00, 1.21846968e-05]])
+              [0.00000000e+00, 1.00000000e-04]])
 
 # R = np.array([[1.00000000e-03, 0.00000000e+00],
 #               [0.00000000e+00, 1.00000000e-06]])
@@ -116,7 +116,7 @@ n_upper = 3  # upper system order: x,y,theta
 # upper_threshold = 50
 # lower_threshold = 5
 """-------------------------------PROMINENCE HERE ----------------------------------"""
-prom = (0.1, 1.1) #prominence
+prom = (1, 1.1) #prominence
 
 
 x0 = np.array([])  # initial states
@@ -226,8 +226,8 @@ P_pred = update_P_pred(P_pred, 0, np.diag(Pp))
 
 i = 1
 ts_prev = time_stamps[0]
-print(f'Xp initial len: {len(Xp)}, Xp: {Xp}')
-to_check = 2000
+# print(f'Xp initial len: {len(Xp)}, Xp: {Xp}')
+to_check = N
 count_old = 0
 while i < to_check:
     print(f'i = {i}, Xp = {len(Xp)}')
@@ -387,31 +387,31 @@ plt.legend()
 
 
 # Confidence intervals
-# plt.figure(figsize=(6, 8))
-# plt.subplot(311)
-# plt.plot(T, pose_true[:, 0] - pose_pred[:, 0], 'r', T, 3 * np.sqrt(P_pred[:, 0]), 'b--', T, -3 * np.sqrt(P_pred[:, 0]),
-#          'b--')
-# plt.ylabel(r'$x(t)-\hat{x}(t)$')
-# title = r'Estimation error (red) and $3\sigma$-confidence intervals (blue) for $x(t)$'
-# plt.title(title)
-# plt.axis([T[0], T[-1], -np.sqrt(P_pred[-1, 0]) * 20, np.sqrt(P_pred[-1, 0]) * 20])
-#
-# plt.subplot(312)
-# plt.plot(T, pose_true[:, 1] - pose_pred[:, 1], 'r', T, 3 * np.sqrt(P_pred[:, 1]), 'b--', T, -3 * np.sqrt(P_pred[:, 1]),
-#          'b--')
-# plt.ylabel(r'$y(t)-\hat{y}(t)$')
-# title = r'Estimation error (red) and $3\sigma$-confidence intervals (blue) for $y(t)$'
-# plt.title(title)
-# plt.axis([T[0], T[-1], -np.sqrt(P_pred[-1, 1]) * 20, np.sqrt(P_pred[-1, 1]) * 20])
-#
-# plt.subplot(313)
-# plt.plot(T, 180 / np.pi * np.unwrap(pose_true[:, 2] - pose_pred[:, 2]), 'r', T, 3 * 180 / np.pi * np.sqrt(P_pred[:, 2]),
-#          'b--', T,
-#          -3 * 180 / np.pi * np.sqrt(P_pred[:, 2]), 'b--')
-#
-# plt.xlabel('$t$')
-# plt.ylabel(r'$\theta(t)-\hat{\theta}(t)$')
-# plt.title(r'Estimation error (red) and $3\sigma$-confidence intervals (blue) for $\theta(t)$')
+plt.figure(figsize=(6, 8))
+plt.subplot(311)
+plt.plot(T, pose_true[:, 0] - pose_pred[:, 0], 'r', T, 3 * np.sqrt(P_pred[:, 0]), 'b--', T, -3 * np.sqrt(P_pred[:, 0]),
+         'b--')
+plt.ylabel(r'$x(t)-\hat{x}(t)$')
+title = r'Estimation error (red) and $3\sigma$-confidence intervals (blue) for $x(t)$'
+plt.title(title)
+plt.axis([T[0], T[-1], -np.sqrt(P_pred[-1, 0]) * 20, np.sqrt(P_pred[-1, 0]) * 20])
+
+plt.subplot(312)
+plt.plot(T, pose_true[:, 1] - pose_pred[:, 1], 'r', T, 3 * np.sqrt(P_pred[:, 1]), 'b--', T, -3 * np.sqrt(P_pred[:, 1]),
+         'b--')
+plt.ylabel(r'$y(t)-\hat{y}(t)$')
+title = r'Estimation error (red) and $3\sigma$-confidence intervals (blue) for $y(t)$'
+plt.title(title)
+plt.axis([T[0], T[-1], -np.sqrt(P_pred[-1, 1]) * 20, np.sqrt(P_pred[-1, 1]) * 20])
+
+plt.subplot(313)
+plt.plot(T, 180 / np.pi * np.unwrap(pose_true[:, 2] - pose_pred[:, 2]), 'r', T, 3 * 180 / np.pi * np.sqrt(P_pred[:, 2]),
+         'b--', T,
+         -3 * 180 / np.pi * np.sqrt(P_pred[:, 2]), 'b--')
+
+plt.xlabel('$t$')
+plt.ylabel(r'$\theta(t)-\hat{\theta}(t)$')
+plt.title(r'Estimation error (red) and $3\sigma$-confidence intervals (blue) for $\theta(t)$')
 
 # # Confidence ellipses
 # r_x = 9.21  # 99% confidence ellipse
