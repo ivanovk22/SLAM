@@ -2,6 +2,8 @@ import numpy as np
 # import PlotMapSN
 import matplotlib.pyplot as plt
 import scipy
+from holoviews.operation import threshold
+from sphinx.builders.gettext import timestamp
 
 
 def PlotMapSN(Obstacles):
@@ -24,46 +26,50 @@ def land_find(ranges, angles, prom):
     for p in peaks:
         if index_range[p] == 1:
             new_peaks.append(int(p))
-    print(len(new_peaks))
+    print('after prom: ', new_peaks)
+    # for p in new_peaks:
 
     final_peaks = []
 
     for m in range(len(new_peaks)):
         mp_current = ranges[new_peaks[m]]
-        ma_current = angles[new_peaks[m]]
-        previous_choice = next_choice = 9
+        # ma_current = angles[new_peaks[m]]
+        previous_choice = next_choice = 1
         if new_peaks[m] + next_choice >= len(ranges) - 1:
             take_next = next_choice - (len(ranges) - new_peaks[m])
         else:
             take_next = new_peaks[m] + next_choice
 
         take_previous = new_peaks[m] - previous_choice
+        print(f'range: {ranges[new_peaks[m]]}, angle: {np.degrees(angles[new_peaks[m]])}')
         print(f'curr: {new_peaks[m]}, prev: {take_previous}, next: {take_next}')
         mp_prev = ranges[take_previous]
-        ma_prev = angles[take_previous]
+        # ma_prev = angles[take_previous]
         mp_next = ranges[take_next]
-        ma_next = angles[take_next]
+        # ma_next = angles[take_next]
 
         # den = abs(ma_prev - ma_current) + 1e-10 #avoid dividing by zero
-        den = previous_choice * np.pi / 180  # radians
-        print(f'mp_current: {mp_current}, mp_prev: {mp_prev}, mp_next: {mp_next}, den: {den}')
+        # den = previous_choice * np.pi / 180  # radians
+        print(f'mp_current: {mp_current}, mp_prev: {mp_prev}, mp_next: {mp_next}')
 
         print(f'diff x: {abs(mp_current - mp_prev)}')
         print(f'diff y: {abs(mp_current - mp_next)}')
-        diff_x = abs(mp_current - mp_prev) / den  # derivative
-        diff_y = abs(mp_current - mp_next) / den  # derivative
-        diff = abs(diff_x - diff_y)
-        print(f'dif x = {diff_x}, dif y = {diff_y}, diff = {diff}')
+        diff_prev = abs(mp_current - mp_prev)  # derivative
+        diff_next = abs(mp_current - mp_next)  # derivative
+        # diff = abs(diff_x - diff_y)
+        print(f'dif prev = {diff_prev}, dif next = {diff_next}, ')
         print('----------------------------------')
-        if diff > 1:
+        threshold = 0.5
+        if diff_prev > threshold or diff_next > threshold:
             final_peaks.append(new_peaks[m])
+    print('final peaks: ', final_peaks)
     new_ranges = []
     new_angles = []
-    for index in final_peaks:
-        new_ranges.append(ranges[index])
-        new_angles.append(angles[index])
+    # for index in final_peaks:
+    #     new_ranges.append(ranges[index])
+    #     new_angles.append(angles[index])
     # return [new_ranges, new_angles]
-    return new_peaks
+    return final_peaks, new_peaks
 
 data = np.load('complete_test.npz', allow_pickle=True)
 
@@ -73,51 +79,66 @@ Ua = data['Ua']  # measured angular velocity (odometry)
 Pose = data['PoseOdom']  # data to be used only for comparison (x(t), y(t), theta(t) of the robot)
 ranges = data['noisyRangeData']
 angles = data['angles']
-prom = 0 #prominence
+prom = 0.1 #prominence
 
 
 ran0 = ranges[:, 0]
-
-for i in ran0:
-    print(i)
-
-
-t = 0
-
-in_degrees = []
-for a in range(len(angles)):
-    in_degrees.append(np.degrees(angles[a]))
-
+# max = -1
+# for i in ran0:
+#     if np.isinf(i) == False and i > max:
+#         max = i
+# print(max)
 # exit()
-changed = []
-new_ranges = []
-count_inf = 0
-for c in range(len(ranges[:, t])):
-    # print('r:', type(ranges[c][t]))
-    if np.isinf(ranges[c][t]):
-        changed.append(30)
-        new_ranges.append(-1)
-        count_inf += 1
-    else:
-        changed.append(ranges[c][t])
-        new_ranges.append(ranges[c][t])
+
+for t in range(400, 500):
+
+# t = 300
+
+    in_degrees = []
+    for a in range(len(angles)):
+        in_degrees.append(np.degrees(angles[a]))
+
+    # exit()
+    changed = []
+    new_ranges = []
+    count_inf = 0
+    for c in range(len(ranges[:, t])):
+        # print('r:', type(ranges[c][t]))
+        if np.isinf(ranges[c][t]) or ranges[c][t] > 1.5:
+            changed.append(3)
+            new_ranges.append(-1)
+            count_inf += 1
+        else:
+            changed.append(ranges[c][t])
+            new_ranges.append(ranges[c][t])
 
 
-changed = np.array(changed)
-new_ranges = np.array(new_ranges)
-print(changed)
-print("INF values num: ", count_inf)
+    changed = np.array(changed)
+    new_ranges = np.array(new_ranges)
+    # print(changed)
+    # print("INF values num: ", count_inf)
 
 
-peaks = land_find(new_ranges, angles, prom)
-print(len(peaks))
-plt.figure(figsize=(8, 8))
-#
-plt.plot(in_degrees, changed, label=r'ranges(0)$')
-for x in peaks:
-    plt.scatter(in_degrees[x], changed[x])
+    peaks, old_peaks = land_find(new_ranges, angles, prom)
+    print(len(peaks))
+    print(len(old_peaks))
 
+    fig = plt.figure(figsize=(8, 8))
+    ax1 = plt.subplot(2, 1, 1)
+    # plt.figure(figsize=(8, 8))
+    #
+    ax1.plot(in_degrees, changed, label=r'ranges(0)$')
+    for x in peaks:
+        ax1.scatter(in_degrees[x], changed[x])
+    plt.title(f't = {t}')
 
+    ax1 = plt.subplot(2, 1, 2)
+    #
+    ax1.plot(in_degrees, changed, label=r'ranges(0)$')
+    for x in old_peaks:
+        ax1.scatter(in_degrees[x], changed[x])
+
+plt.show()
 # plt.gca().invert_xaxis()
 
 
