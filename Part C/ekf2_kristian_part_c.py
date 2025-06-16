@@ -6,8 +6,9 @@ import scipy
 from scipy.linalg import block_diag
 
 plt.close('all')
-
-data = np.load('data_sim_lidar_2.npz', allow_pickle=True)
+save_fig = False
+dataset = 'data_sim_lidar_1.npz'
+data = np.load(dataset, allow_pickle=True)
 
 # Meas = data['Meas']  # Landmark measurements
 Uf = data['Uf']  # measured forward velocity (odometry)
@@ -28,13 +29,14 @@ counter = 0
 
 
 
+
 N = Uf.shape[0]  # Number of odometry measurements
 n_upper = 3  # upper system order: x,y,theta
 # upper_threshold = 14
 # lower_threshold = 5.9915
 
-upper_threshold = 50
-lower_threshold = 5
+# upper_threshold = 50
+# lower_threshold = 5
 prom = 0.10 #prominence
 
 
@@ -62,7 +64,7 @@ def PlotMapSN(Obstacles):
         plt.fill(Obstacles[i][:,0], Obstacles[i][:,1], facecolor='lightgrey', edgecolor='black')
 
 
-def land_find(ranges,angles,prom, robot_x, robot_y, robot_theta):
+def land_find(ranges, angles, prom, robot_x, robot_y, robot_theta):
     index_range = []
     peaks, prominence = scipy.signal.find_peaks(-ranges, prominence=prom)
     for c in range(len(angles)):
@@ -75,21 +77,25 @@ def land_find(ranges,angles,prom, robot_x, robot_y, robot_theta):
         if index_range[p] == 1:
             new_peaks.append(int(p))
     final_peaks = []
+
     for m in range(len(new_peaks)):
+        mp_current = ranges[new_peaks[m]]
         previous_choice = 3
+        if new_peaks[m] + previous_choice >= len(ranges) - 1:
+            previous_choice = len(ranges) - new_peaks[m] - 1
+        elif new_peaks[m] - previous_choice < 0:
+            previous_choice = new_peaks[m]
+
         take_previous = new_peaks[m] - previous_choice
         mp_prev = ranges[take_previous]
-        ma_prev = angles[take_previous]
-        lx_prev = robot_x + mp_prev * np.cos(robot_theta + ma_prev)
-        ly_prev = robot_y + mp_prev * np.sin(robot_theta + ma_prev)
         take_next = new_peaks[m] + previous_choice
         mp_next = ranges[take_next]
-        ma_next = angles[take_next]
-        lx_next = robot_x + mp_next * np.cos(robot_theta + ma_next)
-        ly_next = robot_y + ma_next * np.sin(robot_theta + ma_next)
-        diff_x = abs(lx_prev - lx_next)
-        diff_y = abs(ly_prev - ly_next)
-        if diff_x > 1 or diff_y > 1:
+
+        den = previous_choice * np.pi / 180  # radians
+        diff_x = abs(mp_current - mp_prev) / den  # derivative
+        diff_y = abs(mp_current - mp_next) / den  # derivative
+        diff = abs(diff_x - diff_y)
+        if diff > 1:
             final_peaks.append(new_peaks[m])
     new_ranges = []
     new_angles = []
@@ -98,16 +104,21 @@ def land_find(ranges,angles,prom, robot_x, robot_y, robot_theta):
         new_angles.append(angles[index])
     return [new_ranges, new_angles]
 
+
+#Odometry trajectory
+X_odom_history = np.empty((N, 3))
+Xodometry = Xp.copy()
+for o in range(0,N):
+    Xod = Xodometry.copy()
+    Xodometry = Xod + (Ts * np.array([Uf[o - 1] * np.cos(Xod[2]), Uf[o - 1] * np.sin(Xod[2]), Ua[o - 1]]))
+    X_odom_history[o, :] = Xodometry
+
 """
            ########### Initialize and correct for t = 0 ###########
 """
 
 range_land, angle_land = land_find(ranges[:, 0], angles, prom, Xp[0], Xp[1], Xp[2])
-# print(range_land)
-# print(angle_land)
-#
-# # print('range_land', range_land)
-# exit()
+
 for l in range(len(range_land)):
     if range_land[l] not in landmarks_map:  # Initialize
         landmarks_map.append(len(landmarks_map))
@@ -169,9 +180,8 @@ while i < N:
 
     # check the new measurements
     Xp_new = Xp.copy()
-    upper_threshold = 50
+    upper_threshold = 60
     lower_threshold = 5
-    checker = 110
     for l in range(len(range_land)):
         # for each new measurements find the min d_jk
         range_m = range_land[l]
@@ -210,72 +220,88 @@ while i < N:
 
 
     X_pred = update_data(X_pred, i, Xp)
+
     P_pred = update_P_pred(P_pred, i, np.diag(Pp))
 
     i += 1
 
-
 pose_pred = X_pred[:, :n_upper]
 pose_true = Pose
+pose_odom_pred = X_odom_history[:, :n_upper]
+P_last_values = P_pred[-1, 3:]
+
 landmark_pred = Xp[3:]
+
+for a in range(len(pose_true)):
+    if abs(np.degrees(pose_true[a][2]) - np.degrees(pose_pred[a][2])) > 100:
+        pose_pred[a][2] = angle_wrap(pose_pred[a][2])
+        pose_odom_pred[a][2] = angle_wrap(pose_odom_pred[a][2])
+
 
 T = np.arange(0, N * Ts, Ts) # Time
 
-# Plots and comparisons
-fig = plt.figure()
+# Comparisons of position and orientation
+fig = plt.figure(figsize=(8, 8))
 ax1 = plt.subplot(3, 1, 1)
 ax1.plot(T, pose_true[:, 0], label=r'$x_1(t)$')
 ax1.plot(T, pose_pred[:, 0], label=r'$\hat{x}_1(t)$', color='red', linestyle='--')
+ax1.plot(T, pose_odom_pred[:, 0], label=r'$\hat{x}_{1,  odom}(t)$', color='black', linestyle=':')
 plt.xlabel("$t$")
 plt.ylabel("$x_1(t)$")
 plt.title("Velocity $x_1(t)$")
-plt.legend(loc='upper right')
+plt.legend(loc='upper left')
 
 ax1 = plt.subplot(3, 1, 2)
 ax1.plot(T, pose_true[:, 1], label=r'$x_2(t)$')
 ax1.plot(T, pose_pred[:, 1], label=r'$\hat{x}_2(t)$', color='red', linestyle='--')
+ax1.plot(T, pose_odom_pred[:, 1], label=r'$\hat{x}_{2,odom}(t)$', color='black', linestyle=':')
+
 plt.xlabel("$t$")
 plt.ylabel("$x_2(t)$")
 plt.title("Current $x_2(t)$")
-plt.legend(loc='upper right')
+plt.legend(loc='upper left')
 
 ax1 = plt.subplot(3, 1, 3)
 ax1.plot(T, pose_true[:, 2], label=r'$\theta(t)$')
 ax1.plot(T, pose_pred[:, 2], label=r'$\hat{\theta}(t)$', color='red', linestyle='--')
+ax1.plot(T, pose_odom_pred[:, 2], label=r'$\hat{x}_{theta,odom}(t)$', color='black', linestyle=':')
 plt.xlabel("$t$ (s)")
 plt.ylabel(r"$\theta(t)$ (rad)")
 plt.title("Robot Orientation")
-plt.legend(loc='upper right')
-# plt.grid(True)
 fig.tight_layout()
+plt.legend(loc='upper left')
+plt.subplots_adjust(hspace=0.6)
+
+if save_fig:
+    if int(dataset.split('_')[-1].split('.')[0]) == 1:
+        plt.savefig(f'Figures_Part_C/Comparison_data_1.eps', format='eps')
+    else:
+        plt.savefig(f'Figures_Part_C/Comparison_data_2.eps', format='eps')
+    fig.tight_layout()
 
 
-# Trajectory
-# fig = plt.figure()
-# ax1 = plt.subplot(2, 1, 1)
-# ax1.plot(pose_true[:, 0], pose_true[:, 1], label=r'$x_1(t)$')
-# ax1.plot(pose_pred[:, 0], pose_pred[:, 1], label=r'$\hat{x}_1(t)$', color='red', linestyle='--')
-# plt.legend(loc='center')
 
 # Landmark positions
 landmark_pred = landmark_pred.reshape(-1, 2)
 print('num landmarks:', len(landmark_pred))
-
 fig = plt.figure()
-# ax1 = plt.subplot(2, 1, 1)
-
 plt.scatter(landmark_pred[:, 0], landmark_pred[:, 1], label='Estimated Landmarks (Final)',
-            color='green', marker='o', s=10)
+            color='green', marker='o', s=15)
 PlotMapSN(Obstacles)
 plt.plot(pose_true[:, 0], pose_true[:, 1], label=r'$x_1(t)$')
 plt.plot(pose_pred[:, 0], pose_pred[:, 1], label=r'$\hat{x}_1(t)$', color='red', linestyle='--')
-# plt.plot(trueMap[:,0],trueMap[:,1],'r.')
 
 plt.xlabel("X position (m)")
 plt.ylabel("Y position (m)")
 plt.title("Robot Trajectory and Landmarks")
 plt.legend()
-
+plt.legend(loc='lower right')
+if save_fig:
+    if int(dataset.split('_')[-1].split('.')[0]) == 1:
+        plt.savefig(f'Figures_Part_C/Trajectory_and_Landmarks_data_1.eps', format='eps')
+    else:
+        plt.savefig(f'Figures_Part_C/Trajectory_and_Landmarks_data_2.eps', format='eps')
+    fig.tight_layout()
 
 
 
@@ -287,7 +313,7 @@ plt.plot(T, pose_true[:, 0] - pose_pred[:, 0], 'r', T, 3 * np.sqrt(P_pred[:, 0])
 plt.ylabel(r'$x(t)-\hat{x}(t)$')
 title = r'Estimation error (red) and $3\sigma$-confidence intervals (blue) for $x(t)$'
 plt.title(title)
-plt.axis([T[0], T[-1], -np.sqrt(P_pred[-1, 0]) * 20, np.sqrt(P_pred[-1, 0]) * 20])
+plt.axis([T[0], T[-1], -np.sqrt(P_pred[-1, 0]) * 50, np.sqrt(P_pred[-1, 0]) * 50])
 
 plt.subplot(312)
 plt.plot(T, pose_true[:, 1] - pose_pred[:, 1], 'r', T, 3 * np.sqrt(P_pred[:, 1]), 'b--', T, -3 * np.sqrt(P_pred[:, 1]),
@@ -305,78 +331,121 @@ plt.plot(T, 180 / np.pi * np.unwrap(pose_true[:, 2] - pose_pred[:, 2]), 'r', T, 
 plt.xlabel('$t$')
 plt.ylabel(r'$\theta(t)-\hat{\theta}(t)$')
 plt.title(r'Estimation error (red) and $3\sigma$-confidence intervals (blue) for $\theta(t)$')
+plt.subplots_adjust(hspace=0.4)
 
-# # Confidence ellipses
-# r_x = 9.21  # 99% confidence ellipse
-# # r_x = 20 # 99% confidence ellipse
-# consistent = []
-# radii_all = []
-# fig, ax = plt.subplots(figsize=(8, 8))
-#
-# # sort the true landmarks corresponding to our indexes
-#
-# new_landmarks = np.zeros((18, 2))
-# for l in range(len(landmarks_map)):
-#     lx = landmark_pred[l][0]
-#     ly = landmark_pred[l][1]
-#     # find the one with the smallest error
-#     for l2 in range(len(Landmarks)):
-#         if abs(lx - Landmarks[l2][0]) < 0.5 and abs(ly - Landmarks[l2][1]) < 0.5:
-#             new_landmarks[l] = [Landmarks[l2][0], Landmarks[l2][1]]
-#             break
-#
-# Landmarks = new_landmarks.copy()
-# for j in range(Nland): #for all landmarks
-#     singular = False
-#     idx = n_upper + 2 * j
-#     L_true = Landmarks[j]
-#     L_est = X_pred[-1][idx:idx + 2]
-#     Pj = Pp[idx:idx + 2, idx:idx + 2]
-#
-#     error = (L_true - L_est).reshape(-1, 1)
-#     VTV = error.T @ np.linalg.inv(Pj) @ error
-#
-#     consistent.append(VTV[0][0] < r_x)
-#
-#     eigenvals, eigenvecs = np.linalg.eig(Pj)
-#
-#     # Sort eigenvalues and eigenvectors so largest eigenvalue comes first (major axis)
-#     order = eigenvals.argsort()[::-1]
-#     eigenvals = eigenvals[order]
-#     eigenvecs = eigenvecs[:, order]
-#
-#     # Calculate ellipse angle in degrees
-#     angle = np.arctan2(eigenvecs[1, 0], eigenvecs[0, 0]) * 180 / np.pi
-#
-#     # Calculate axes lengths (scaled by sqrt of chi-square quantile for confidence)
-#     width, height = 2 * np.sqrt(eigenvals * r_x)  # factor 2 because width = 2*a, height = 2*b
-#
-#     # Create ellipse patch
-#     ellipse = Ellipse(xy=L_est, width=width, height=height, angle=angle, edgecolor='blue', fc='None', lw=2)
-#
-#     ax.add_patch(ellipse)
-#     # Plot landmark estimate as a point
-#     ax.scatter(L_est[0], L_est[1], label='Estimated Landmarks (Final)',
-#                color='red', marker='x')
-#     if j == 0:
-#         ax.scatter(Landmarks[:, 0], Landmarks[:, 1], label='True Landmarks', color='green', marker='o', s=40,
-#                    facecolors='none')
-#         ax.legend(['Confidence Ellipse', 'Estimated Landmarks', 'True Landmarks'])
-# ax.set_xlabel('X position')
-# ax.set_ylabel('Y position')
-# ax.set_title('Landmark position estimates with 99% confidence ellipses')
-# ax.axis('equal')
-# plt.grid(True)
-# # plt.show()
-# all_good = True
-# for lm in range(len(consistent)):
-#     if consistent[lm] != np.True_:
-#         print(f"Landmark {lm + 1} = NOT CONSISTENT!")
-#         all_good = False
-#
-# if all_good:
-#     print("All landmarks are consistent. All good!")
-# else:
-#     print("Error: One or more landmarks are inconsistent. :(")
-# #
+if save_fig:
+    if int(dataset.split('_')[-1].split('.')[0]) == 1:
+        plt.savefig(f'Figures_Part_C/Confidence_intervals_data_1.eps', format='eps')
+    else:
+        plt.savefig(f'Figures_Part_C/Confidence_intervals_data_2.eps', format='eps')
+
+r_x = 9.21  # 99% confidence ellipse
+consistent = []
+radii_all = []
+fig, ax = plt.subplots(figsize=(8, 8))
+
+
+for j in range(len(landmark_pred)): #for all landmarks
+    idx = n_upper + 2 * j
+    L_est = X_pred[-1][idx:idx + 2]
+    Pj = Pp[idx:idx + 2, idx:idx + 2]
+
+    eigenvals, eigenvecs = np.linalg.eig(Pj)
+
+    # Sort eigenvalues and eigenvectors so largest eigenvalue comes first (major axis)
+    order = eigenvals.argsort()[::-1]
+    eigenvals = eigenvals[order]
+    eigenvecs = eigenvecs[:, order]
+
+    # Calculate ellipse angle in degrees
+    angle = np.arctan2(eigenvecs[1, 0], eigenvecs[0, 0]) * 180 / np.pi
+
+    # Calculate axes lengths (scaled by sqrt of chi-square quantile for confidence)
+    width, height = 2 * np.sqrt(eigenvals * r_x)  # factor 2 because width = 2*a, height = 2*b
+
+    # Create ellipse patch
+    ellipse = Ellipse(xy=L_est, width=width, height=height, angle=angle, edgecolor='blue', fc='None', lw=2)
+
+    ax.add_patch(ellipse)
+    # Plot landmark estimate as a point
+    ax.scatter(L_est[0], L_est[1], label='Estimated Landmarks (Final)',
+               color='red', marker='o', s=5)
+    if j == 0:
+        PlotMapSN(Obstacles)
+        ax.legend(['Confidence Ellipse', 'Estimated Landmarks'])
+ax.set_xlabel('X position')
+ax.set_ylabel('Y position')
+ax.set_title('Landmark position estimates with 99% confidence ellipses')
+plt.grid(True)
+if save_fig:
+    if int(dataset.split('_')[-1].split('.')[0]) == 1:
+        plt.savefig(f'Figures_Part_C/Confidence_ellipses_data_1.eps', format='eps')
+    else:
+        plt.savefig(f'Figures_Part_C/Confidence_ellipses_data_2.eps', format='eps')
+
+
+# Compare the ground truth maps of the environment with those obtained by plotting all the noisy Lidar scans
+
+odom_meas = []
+pred_meas = []
+
+for p in range(N):
+    ranges_t = ranges[:, p]
+    for meas_idx in range(len(ranges_t)):
+        if ranges_t[meas_idx] > 0:
+
+            odom_r_x = pose_odom_pred[p][0]
+            odom_r_y = pose_odom_pred[p][1]
+            odom_r_theta = pose_odom_pred[p][2]
+
+            pred_r_x = pose_pred[p][0]
+            pred_r_y = pose_pred[p][1]
+            pred_r_theta = pose_pred[p][2]
+
+            mp = ranges_t[meas_idx]
+            ma = angles[meas_idx]
+
+
+            odom_l_x = odom_r_x + mp * np.cos(odom_r_theta + ma)
+            odom_l_y = odom_r_y + mp * np.sin(odom_r_theta + ma)
+            odom_meas.append([odom_l_x, odom_l_y])
+            #
+            pred_l_x = pred_r_x + mp * np.cos(pred_r_theta + ma)
+            pred_l_y = pred_r_y + mp * np.sin(pred_r_theta + ma)
+            pred_meas.append([pred_l_x, pred_l_y])
+
+
+odom_meas = np.array(odom_meas)
+pred_meas = np.array(pred_meas)
+
+fig = plt.figure()
+plt.scatter(pred_meas[:, 0], pred_meas[:, 1], label='Lidar Measurements',
+            color='blue', marker='o', s=0.5)
+plt.scatter(landmark_pred[:, 0], landmark_pred[:, 1], label='Estimated Landmarks (Final)',
+            color='red', marker='o', s=10)
+PlotMapSN(Obstacles)
+plt.legend()
+
+plt.title(r'All lidar scans from the estimated robot poses')
+if save_fig:
+    if int(dataset.split('_')[-1].split('.')[0]) == 1:
+        plt.savefig(f'Figures_Part_C/Scans_estimated_data_1.png', dpi=300)
+    else:
+        plt.savefig(f'Figures_Part_C/Scans_estimated_data_2.png', dpi=300)
+
+fig = plt.figure()
+plt.scatter(odom_meas[:, 0], odom_meas[:, 1], label='Lidar Measurements',
+            color='green', marker='o', s=0.5)
+plt.scatter(landmark_pred[:, 0], landmark_pred[:, 1], label='Estimated Landmarks (Final)',
+            color='red', marker='o', s=10)
+PlotMapSN(Obstacles)
+plt.legend()
+plt.title(r'All lidar scans from the robot poses(ONLY ODOMETRY)')
+if save_fig:
+    if int(dataset.split('_')[-1].split('.')[0]) == 1:
+        plt.savefig(f'Figures_Part_C/Scans_odometry_data_1.png', dpi=300)
+    else:
+        plt.savefig(f'Figures_Part_C/Scans_odometry_data_2.png', dpi=300)
+
+
 plt.show()

@@ -1,9 +1,11 @@
 import numpy as np
-eta = 1000
+eta = 100000
 n_upper = 3
 
 def angle_wrap(angle):
-    angle = (angle + np.pi) % (2 * np.pi) - np.pi
+    # angle = (angle + np.pi) % (2 * np.pi) - np.pi
+    angle = (angle + np.pi/2) % (2 * np.pi) - np.pi/2
+
     return angle
 
 def append_to_array(arr, to_append):
@@ -21,6 +23,9 @@ def extend_P(p, num_new_landmarks):
 
 def innovation(M, xp):
     landmarks = M[:, 2]
+    # print(f'M: {M}')
+    # print(f'Landmarks: {landmarks}')
+
     # take the predictions
     predicted_meas = np.zeros((len(landmarks), 2))
     for i in range(len(landmarks)):
@@ -28,12 +33,12 @@ def innovation(M, xp):
 
         lx = xp[n_upper + 2 * j]
         ly = xp[n_upper + 2 * j + 1]
-
+        # print(f'lx = {lx}, ly = {ly}')
         predicted_p = np.sqrt((lx - xp[0]) ** 2 + (ly - xp[1]) ** 2)
         predicted_alpha = angle_wrap(np.arctan2(ly - xp[1], lx - xp[0]) - xp[2])
+        # print(f'predicted_p = {predicted_p}, predicted_alpha = {predicted_alpha}')
         predicted_meas[i][0] = predicted_p
         predicted_meas[i][1] = predicted_alpha
-
     inn = M[:, :2] - predicted_meas
     return inn.reshape(-1, 1)
 
@@ -114,13 +119,19 @@ def correction(xp, pp, M, Rmat):
     R_new = np.kron(np.eye(len(ranges)), Rmat)
     # Equations
     K = pp @ H.T @ np.linalg.inv(H @ pp @ H.T + R_new)
+    # print('K:', K)
 
     P = (np.eye(n_states) - K @ H) @ pp
     measurement = np.array([ranges, angles, indexes]).T
     inn = innovation(measurement, xp)
+    # print('inn:', inn)
+    # print(f'shapes: K:{K.shape}, inn:{inn.shape}')
+    # print(f'K@inn: {(K@inn).reshape(-1)}')
+    # print(f'xp: {xp}')
+    # print(f'X: {xp + (K @ inn).reshape(-1)}')
     X = xp + (K @ inn).reshape(-1)
-
     xp = X.copy()
+
     pp = P.copy()
     return xp, pp
 

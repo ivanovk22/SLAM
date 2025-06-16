@@ -6,8 +6,10 @@ import scipy
 from scipy.linalg import block_diag
 
 plt.close('all')
+save_fig = False
 
-data = np.load('data_point_land_1.npz', allow_pickle=True)
+dataset = 'data_point_land_1.npz'
+data = np.load(dataset, allow_pickle=True)
 
 Meas = data['Meas']  # Landmark measurements
 Uf = data['Uf']  # measured forward velocity (odometry)
@@ -22,9 +24,12 @@ Pose = data['Pose']  # data to be used only for comparison (x(t), y(t), theta(t)
 Landmarks = data[
     'Landmarks']  # data to be used only for comparison (ith row corresponds to i+1th of landmark locations.)
 
+
+
 range_land = Meas.item()['range']  # landmark ranges
 angle_land = Meas.item()['angle']  # landmark angles
 index_land = Meas.item()['land']  # landmark indices
+
 
 N = Uf.shape[0]  # Number of odometry measurements
 
@@ -76,6 +81,7 @@ def innovation(M, xp):
 
 
 def correction(xp, pp, M):
+
     ranges = M[0]
     angles = M[1]
     indexes = M[2]
@@ -112,9 +118,7 @@ def correction(xp, pp, M):
     measurement = np.array([ranges, angles, indexes]).T
     inn = innovation(measurement, xp)
     X = xp + (K @ inn).reshape(-1)
-    print(K.shape)
-    print(inn.shape)
-    print('------')
+
 
     xp = X.copy()
     pp = P.copy()
@@ -124,12 +128,20 @@ def correction(xp, pp, M):
 Xp = x0.copy()
 Pp = P0.copy()
 X_pred = np.empty((N, n))
+X_odom_history = np.empty((N, 3))
 P_pred = np.empty((N, n))
 P_pred_full = np.zeros((N, n, n))
 
 Q_straight = Q.copy()
 checked_landmarks = []
 Xp_lower = np.zeros(n_lower)
+#Odometry trajectory
+
+Xodometry = Xp[0:3].copy()
+for o in range(0,N):
+    Xod = Xodometry.copy()
+    Xodometry = Xod + (Ts * np.array([Uf[o - 1] * np.cos(Xod[2]), Uf[o - 1] * np.sin(Xod[2]), Ua[o - 1]]))
+    X_odom_history[o, :] = Xodometry
 
 """
            ########### Initialize and correct for t = 0 ###########
@@ -147,8 +159,8 @@ for l in range(len(index_land[0])):
         Xp[n_upper + 2 * j + 1] = ly
 
 m = np.array([range_land[0], angle_land[0], index_land[0]])
-Xp, Pp = correction(Xp, Pp, m)
 
+Xp, Pp = correction(Xp, Pp, m)
 X_pred[0, :] = Xp
 P_pred[0, :] = np.diag(Pp)
 P_pred_full[0, :] = Pp
@@ -160,6 +172,7 @@ while i < N:
     """
     X = Xp.copy()
     Xp = X + np.concatenate((Ts * np.array([Uf[i - 1] * np.cos(X[2]), Uf[i - 1] * np.sin(X[2]), Ua[i - 1]]), Xp_lower))
+
     dUpper_dx = np.array([[1, 0, -Ts * Uf[i - 1] * np.sin(X[2])],
                           [0, 1, Ts * Uf[i - 1] * np.cos(X[2])],
                           [0, 0, 1]])
@@ -174,7 +187,6 @@ while i < N:
                   [dlower_dw]])
     Q = Qturn if abs(Ua[i - 1]) > Wturn else Q_straight
     Pp = F @ Pp @ F.T + G @ Q @ G.T
-
     """
         ########### Correction ###########
     """
@@ -197,63 +209,80 @@ while i < N:
     P_pred_full[i, :] = Pp
 
     i += 1
-    if i == 3:
-        break
 
-# take the first three columns for every row of X_pred
+
 
 pose_pred = X_pred[:, :n_upper]
+pose_odom_pred = X_odom_history[:, :n_upper]
 pose_true = Pose
-
 landmark_pred = X_pred[N - 1, 3:]
 
 print("\nFinal Estimated Robot Pose:", pose_pred[-1, :])
 print("Final True Robot Pose:", pose_true[-1, :])
 print("\nFinal Estimated Landmark Positions:\n", landmark_pred)
 # print("True Landmark Positions:\n", Landmarks)
-
-
 T = np.arange(0, N * Ts, Ts) # Time
+
+
+
 # Plots and comparisons
-fig = plt.figure()
+fig = plt.figure(figsize=(8, 8))
 ax1 = plt.subplot(3, 1, 1)
 ax1.plot(T, pose_true[:, 0], label=r'$x_1(t)$')
 ax1.plot(T, pose_pred[:, 0], label=r'$\hat{x}_1(t)$', color='red', linestyle='--')
+ax1.plot(T, pose_odom_pred[:, 0], label=r'$\hat{x}_{1,  odom}(t)$', color='black', linestyle=':')
+
 plt.xlabel("$t$")
 plt.ylabel("$x_1(t)$")
 plt.title("Velocity $x_1(t)$")
-plt.legend(loc='upper right')
+plt.legend(loc='upper left')
 
 ax1 = plt.subplot(3, 1, 2)
 ax1.plot(T, pose_true[:, 1], label=r'$x_2(t)$')
 ax1.plot(T, pose_pred[:, 1], label=r'$\hat{x}_2(t)$', color='red', linestyle='--')
+ax1.plot(T, pose_odom_pred[:, 1], label=r'$\hat{x}_{2,odom}(t)$', color='black', linestyle=':')
+
 plt.xlabel("$t$")
 plt.ylabel("$x_2(t)$")
 plt.title("Current $x_2(t)$")
-plt.legend(loc='upper right')
+plt.legend(loc='upper left')
 
 ax1 = plt.subplot(3, 1, 3)
 ax1.plot(T, pose_true[:, 2], label=r'$\theta(t)$')
 ax1.plot(T, pose_pred[:, 2], label=r'$\hat{\theta}(t)$', color='red', linestyle='--')
+ax1.plot(T, pose_odom_pred[:, 2], label=r'$\hat{x}_{theta,odom}(t)$', color='black', linestyle=':')
+
 plt.xlabel("$t$ (s)")
 plt.ylabel(r"$\theta(t)$ (rad)")
 plt.title("Robot Orientation")
-plt.legend(loc='upper right')
-# plt.grid(True)
+plt.subplots_adjust(hspace=0.6)
+plt.legend(loc='upper left')
+if save_fig:
+    if int(dataset.split('_')[-1].split('.')[0]) == 1:
+        plt.savefig(f'Figures_Part_A/Comparison_data_1.eps', format='eps')
+    else:
+        plt.savefig(f'Figures_Part_A/Comparison_data_2.eps', format='eps')
 
 fig.tight_layout()
 
 # Trajectory
 fig = plt.figure()
-ax1 = plt.subplot(2, 1, 1)
-ax1.plot(pose_true[:, 0], pose_true[:, 1], label=r'$x_1(t)$')
-ax1.plot(pose_pred[:, 0], pose_pred[:, 1], label=r'$\hat{x}_1(t)$', color='red', linestyle='--')
+# ax1 = plt.subplot(2, 1, 1)
+plt.plot(pose_true[:, 0], pose_true[:, 1], label=r'$x_1(t)$')
+plt.plot(pose_pred[:, 0], pose_pred[:, 1], label=r'$\hat{x}_1(t)$', color='red', linestyle='--')
+plt.plot(pose_odom_pred[:, 0], pose_odom_pred[:, 1], label=r'$\hat{x}_{1,odom}(t)$', color='black', linestyle=':')
+plt.title("Robot Trajectory")
 plt.legend(loc='center')
+if save_fig:
+    if int(dataset.split('_')[-1].split('.')[0]) == 1:
+        plt.savefig(f'Figures_Part_A/Robot_trajectory_data_1.eps', format='eps')
+    else:
+        plt.savefig(f'Figures_Part_A/Robot_trajectory_data_2.eps', format='eps')
 
 # Landmark positions
 landmark_pred = landmark_pred.reshape(-1, 2)
 fig = plt.figure()
-ax1 = plt.subplot(2, 1, 1)
+# ax1 = plt.subplot(2, 1, 2)
 
 plt.scatter(Landmarks[:, 0], Landmarks[:, 1], label='True Landmarks', color='red', marker='o', s=50, facecolors='none')
 
@@ -275,7 +304,7 @@ plt.plot(T, pose_true[:, 0] - pose_pred[:, 0], 'r', T, 3 * np.sqrt(P_pred[:, 0])
 plt.ylabel(r'$x(t)-\hat{x}(t)$')
 title = r'Estimation error (red) and $3\sigma$-confidence intervals (blue) for $x(t)$'
 plt.title(title)
-plt.axis([T[0], T[-1], -np.sqrt(P_pred[-1, 0]) * 20, np.sqrt(P_pred[-1, 0]) * 20])
+plt.axis([T[0], T[-1], -np.sqrt(P_pred[-1, 0]) * 30, np.sqrt(P_pred[-1, 0]) * 30])
 plt.subplot(312)
 plt.plot(T, pose_true[:, 1] - pose_pred[:, 1], 'r', T, 3 * np.sqrt(P_pred[:, 1]), 'b--', T, -3 * np.sqrt(P_pred[:, 1]),
          'b--')
@@ -290,25 +319,30 @@ plt.plot(T, 180 / np.pi * np.unwrap(pose_true[:, 2] - pose_pred[:, 2]), 'r', T, 
 plt.xlabel('$t$')
 plt.ylabel(r'$\theta(t)-\hat{\theta}(t)$')
 plt.title(r'Estimation error (red) and $3\sigma$-confidence intervals (blue) for $\theta(t)$')
-# plt.axis([T[0], T[-1], -np.sqrt(P_pred[-1, 2]) * 20, np.sqrt(P_pred[-1, 2]) * 20])
 
+if save_fig:
+    if int(dataset.split('_')[-1].split('.')[0]) == 1:
+        plt.savefig(f'Figures_Part_A/Confidence_intervals_data_1.eps', format='eps')
+    else:
+        plt.savefig(f'Figures_Part_A/Confidence_intervals_data_2.eps', format='eps')
 
 # Confidence ellipses
+
 r_x = 9.21  # 99% confidence ellipse
 consistent = []
 radii_all = []
 fig, ax = plt.subplots(figsize=(8, 8))
-
 
 for j in range(Nland): #for all landmarks
     idx = n_upper + 2 * j
     L_true = Landmarks[j]
     L_est = X_pred[-1][idx:idx + 2]
 
-    Pj = P_pred_full[-1][idx:idx + 2, idx:idx + 2]
+    Pj = Pp[idx:idx + 2, idx:idx + 2]
 
     error = (L_true - L_est).reshape(-1, 1)
     VTV = error.T @ np.linalg.inv(Pj) @ error
+
 
     consistent.append(VTV[0][0] < r_x)
 
@@ -330,13 +364,24 @@ for j in range(Nland): #for all landmarks
 
     ax.add_patch(ellipse)
     # Plot landmark estimate as a point
-    ax.plot(L_est[0], L_est[1], 'ro')
+    ax.scatter(L_est[0], L_est[1], label='Estimated Landmarks (Final)',
+               color='red', marker='x')
+    if j == 0:
+        ax.scatter(Landmarks[:, 0], Landmarks[:, 1], label='True Landmarks', color='green', marker='o', s=40,
+                   facecolors='none')
+        ax.legend(['Confidence Ellipse', 'Estimated Landmarks', 'True Landmarks'])
 ax.set_xlabel('X position')
 ax.set_ylabel('Y position')
 ax.set_title('Landmark position estimates with 99% confidence ellipses')
 ax.axis('equal')
+if save_fig:
+    if int(dataset.split('_')[-1].split('.')[0]) == 1:
+        plt.savefig(f'Figures_Part_A/Confidence_ellipses_data_1.eps', format='eps')
+    else:
+        plt.savefig(f'Figures_Part_A/Confidence_ellipses_data_2.eps', format='eps')
+
+
 plt.grid(True)
-plt.show()
 all_good = True
 for lm in range(len(consistent)):
     if consistent[lm] == np.True_:
