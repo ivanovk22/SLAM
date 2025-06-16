@@ -1,4 +1,8 @@
 import numpy as np
+import scipy
+import matplotlib.pyplot as plt
+
+
 eta = 1000
 n_upper = 3
 
@@ -6,20 +10,22 @@ def angle_wrap(angle):
     angle = (angle + np.pi) % (2 * np.pi) - np.pi
     return angle
 
+
 def append_to_array(arr, to_append):
     arr = arr.tolist()
     arr.append(to_append)
     return np.array(arr)
 
 def extend_P(p, num_new_landmarks):
-    # extend P with the number of the new initialized landmarks
-    diagonal = p.diagonal().tolist()
-    previous = len(diagonal)
-    diagonal.extend([eta]*num_new_landmarks*2)
 
-    new_p = np.zeros((previous+2*num_new_landmarks, previous+2*num_new_landmarks))
-    np.fill_diagonal(new_p, diagonal)
-    return new_p
+    P_new = np.block([[p, np.zeros((p.shape[0], 2*num_new_landmarks))],
+                   [np.zeros((2*num_new_landmarks, p.shape[0])), eta * np.eye(2*num_new_landmarks)]])
+    return P_new
+
+
+
+
+
 
 def innovation(M, xp):
     landmarks = M[:, 2]
@@ -51,14 +57,11 @@ def max_likelihood(r, alpha, x, p, Rmat):
         H = np.zeros((2, len(x)))
         l_x = landmarks[k][0]
         l_y = landmarks[k][1]
-        # print(f"lx = {l_x}, ly = {l_y}")
         new_p = r -  np.sqrt((l_x - robot_x) ** 2 + (l_y - robot_y) ** 2)
         new_alpha = angle_wrap(alpha - angle_wrap(np.arctan2(l_y - robot_y, l_x - robot_x) - robot_theta))
 
         delta = np.array([new_p, new_alpha]).reshape(-1, 1)
         p_den = np.sqrt((l_x - robot_x) ** 2 + (l_y - robot_y) ** 2)
-        # H[0][0] = - (l_x - robot_x) / p_den  # dx
-        # H[0][1] = - (l_y - robot_y) / p_den  # dy
 
         H[0][0] = (robot_x - l_x) / p_den  # dx
         H[0][1] = (robot_y - l_y) / p_den  # dy
@@ -116,12 +119,10 @@ def correction(xp, pp, M, Rmat):
         H[row_alpha][n_upper + 2 * j] = -(ly - xp[1]) / alpha_den  # dlx
         H[row_alpha][n_upper + 2 * j + 1] = (lx - xp[0]) / alpha_den  # dly
 
-    # print('H shape:', H.shape)
     R_new = np.kron(np.eye(len(ranges)), Rmat)
     # Equations
     K = pp @ H.T @ np.linalg.inv(H @ pp @ H.T + R_new)
-    # P = pp @ (np.eye(n_states) - H.T @ K.T)
-    # P = pp @ (np.eye(n_states) - H.T @ K.T)
+
     P = (np.eye(n_states) - K @ H) @ pp
     measurement = np.array([ranges, angles, indexes]).T
     inn = innovation(measurement, xp)

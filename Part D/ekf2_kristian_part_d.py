@@ -9,7 +9,7 @@ from scipy.linalg import block_diag
 import sys
 
 plt.close('all')
-
+save_fig = False
 data = np.load('complete_test.npz', allow_pickle=True)
 Uf = data['Uf']  # measured forward velocity (odometry)
 Ua = data['Ua']  # measured angular velocity (odometry)

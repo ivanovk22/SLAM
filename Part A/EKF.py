@@ -6,9 +6,9 @@ import scipy
 from scipy.linalg import block_diag
 
 plt.close('all')
-save_fig = False
+save_fig = True
 
-dataset = 'data_point_land_1.npz'
+dataset = 'data_point_land_2.npz'
 data = np.load(dataset, allow_pickle=True)
 
 Meas = data['Meas']  # Landmark measurements
@@ -215,7 +215,7 @@ while i < N:
 pose_pred = X_pred[:, :n_upper]
 pose_odom_pred = X_odom_history[:, :n_upper]
 pose_true = Pose
-landmark_pred = X_pred[N - 1, 3:]
+landmark_pred = X_pred[N - 1, 3:].reshape(-1, 2)
 
 print("\nFinal Estimated Robot Pose:", pose_pred[-1, :])
 print("Final True Robot Pose:", pose_true[-1, :])
@@ -250,7 +250,7 @@ plt.legend(loc='upper left')
 ax1 = plt.subplot(3, 1, 3)
 ax1.plot(T, pose_true[:, 2], label=r'$\theta(t)$')
 ax1.plot(T, pose_pred[:, 2], label=r'$\hat{\theta}(t)$', color='red', linestyle='--')
-ax1.plot(T, pose_odom_pred[:, 2], label=r'$\hat{x}_{theta,odom}(t)$', color='black', linestyle=':')
+ax1.plot(T, pose_odom_pred[:, 2], label=r'$\hat{\theta}_{odom}(t)$', color='black', linestyle=':')
 
 plt.xlabel("$t$ (s)")
 plt.ylabel(r"$\theta(t)$ (rad)")
@@ -271,16 +271,17 @@ fig = plt.figure()
 plt.plot(pose_true[:, 0], pose_true[:, 1], label=r'$x_1(t)$')
 plt.plot(pose_pred[:, 0], pose_pred[:, 1], label=r'$\hat{x}_1(t)$', color='red', linestyle='--')
 plt.plot(pose_odom_pred[:, 0], pose_odom_pred[:, 1], label=r'$\hat{x}_{1,odom}(t)$', color='black', linestyle=':')
+plt.scatter(landmark_pred[:, 0], landmark_pred[:, 1], label='Estimated Landmarks',
+            color='green', marker='x', s=10)
 plt.title("Robot Trajectory")
-plt.legend(loc='center')
+plt.legend(loc='upper right')
 if save_fig:
     if int(dataset.split('_')[-1].split('.')[0]) == 1:
         plt.savefig(f'Figures_Part_A/Robot_trajectory_data_1.eps', format='eps')
     else:
         plt.savefig(f'Figures_Part_A/Robot_trajectory_data_2.eps', format='eps')
 
-# Landmark positions
-landmark_pred = landmark_pred.reshape(-1, 2)
+
 fig = plt.figure()
 # ax1 = plt.subplot(2, 1, 2)
 

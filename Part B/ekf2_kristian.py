@@ -6,8 +6,8 @@ from matplotlib.patches import Ellipse
 import scipy
 from scipy.linalg import block_diag
 plt.close('all')
-dataset = 'data_point_land_2.npz'
-save_fig = False
+dataset = 'data_point_land_1.npz'
+save_fig = True
 data = np.load(dataset, allow_pickle=True)
 
 Meas = data['Meas']  # Landmark measurements
@@ -23,6 +23,7 @@ Pose = data['Pose']  # data to be used only for comparison (x(t), y(t), theta(t)
 Landmarks = data[
     'Landmarks']  # data to be used only for comparison (ith row corresponds to i+1th of landmark locations.)
 counter = 0
+
 
 
 range_land = Meas.item()['range']  # landmark ranges
@@ -46,10 +47,17 @@ lambda_ = 1e-6
 P_upper = lambda_ * np.eye(n_upper)  # uncertainty of x,y,theta
 # eta = 1000
 P0 = P_upper
+
+
 Xp = x0.copy()
+X_odom_only = x0.copy()
+
 Pp = P0.copy()
+Pp_odom = P0.copy()
 
 X_pred = np.empty((N, 0)) # as beginning 220x0
+# X_odom_history = np.empty((N, 3))
+
 P_pred = np.empty((N, 0)) # as beginning 220x0
 Q_straight = Q.copy()
 landmarks_map = []
@@ -93,6 +101,7 @@ P_pred = update_P_pred(P_pred, 0, np.diag(Pp))
 
 i = 1
 
+
 while i < N:
     """
             ########### Prediction ###########
@@ -118,7 +127,6 @@ while i < N:
                   [dlower_dw]])
     Q = Qturn if abs(Ua[i - 1]) > Wturn else Q_straight
     Pp = F @ Pp @ F.T + G @ Q @ G.T
-
     """
         ########### Correction ###########
     """
@@ -154,8 +162,8 @@ while i < N:
     Xp = Xp_new.copy()
     if len(for_correction) > 0:
         for_correction = np.array(for_correction).T
-
         # correct
+
         if number_of_new_initializations > 0:
             Pp = extend_P(Pp, number_of_new_initializations)
 
@@ -169,7 +177,7 @@ while i < N:
 pose_pred = X_pred[:, :n_upper]
 pose_true = Pose
 pose_odom_pred = X_odom_history[:, :n_upper]
-landmark_pred = Xp[3:]
+landmark_pred = Xp[3:].reshape(-1, 2)
 
 T = np.arange(0, N * Ts, Ts) # Time
 
@@ -201,7 +209,7 @@ plt.legend(loc='upper left')
 ax1 = plt.subplot(3, 1, 3)
 ax1.plot(T, pose_true[:, 2], label=r'$\theta(t)$')
 ax1.plot(T, pose_pred[:, 2], label=r'$\hat{\theta}(t)$', color='red', linestyle='--')
-ax1.plot(T, pose_odom_pred[:, 2], label=r'$\hat{x}_{theta,odom}(t)$', color='black', linestyle=':')
+ax1.plot(T, pose_odom_pred[:, 2], label=r'$\hat{\theta}_{odom}(t)$', color='black', linestyle=':')
 
 plt.xlabel("$t$ (s)")
 plt.ylabel(r"$\theta(t)$ (rad)")
@@ -222,8 +230,10 @@ fig = plt.figure()
 plt.plot(pose_true[:, 0], pose_true[:, 1], label=r'$x_1(t)$')
 plt.plot(pose_pred[:, 0], pose_pred[:, 1], label=r'$\hat{x}_1(t)$', color='red', linestyle='--')
 plt.plot(pose_odom_pred[:, 0], pose_odom_pred[:, 1], label=r'$\hat{x}_{1,odom}(t)$', color='black', linestyle=':')
+plt.scatter(landmark_pred[:, 0], landmark_pred[:, 1], label='Estimated Landmarks (Final)',
+            color='green', marker='x', s=10)
 plt.title("Robot Trajectory")
-plt.legend(loc='center')
+plt.legend(loc='upper right')
 if save_fig:
     if int(dataset.split('_')[-1].split('.')[0]) == 1:
         plt.savefig(f'Figures_Part_B/Robot_trajectory_data_1.eps', format='eps')
@@ -231,7 +241,6 @@ if save_fig:
         plt.savefig(f'Figures_Part_B/Robot_trajectory_data_2.eps', format='eps')
 
 # Landmark positions
-landmark_pred = landmark_pred.reshape(-1, 2)
 fig = plt.figure()
 ax1 = plt.subplot(2, 1, 1)
 

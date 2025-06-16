@@ -6,8 +6,8 @@ import scipy
 from scipy.linalg import block_diag
 
 plt.close('all')
-save_fig = False
-dataset = 'data_sim_lidar_1.npz'
+save_fig = True
+dataset = 'data_sim_lidar_2.npz'
 data = np.load(dataset, allow_pickle=True)
 
 # Meas = data['Meas']  # Landmark measurements
@@ -264,7 +264,7 @@ plt.legend(loc='upper left')
 ax1 = plt.subplot(3, 1, 3)
 ax1.plot(T, pose_true[:, 2], label=r'$\theta(t)$')
 ax1.plot(T, pose_pred[:, 2], label=r'$\hat{\theta}(t)$', color='red', linestyle='--')
-ax1.plot(T, pose_odom_pred[:, 2], label=r'$\hat{x}_{theta,odom}(t)$', color='black', linestyle=':')
+ax1.plot(T, pose_odom_pred[:, 2], label=r'$\hat{\theta}_{odom}(t)$', color='black', linestyle=':')
 plt.xlabel("$t$ (s)")
 plt.ylabel(r"$\theta(t)$ (rad)")
 plt.title("Robot Orientation")
