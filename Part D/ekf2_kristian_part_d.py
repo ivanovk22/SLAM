@@ -21,8 +21,10 @@ wheelvels_readings = data['wheelvels_readings']
 wheelvels_times = data['wheelvels_times']
 counter = 0
 
-angle_res = angles[1]-angles[0] #Angle resolution of lidar
-k = 3 #3 sigma limit
+# angle_res = angles[1]-angles[0] #Angle resolution of lidar
+angle_res = angles[3]-angles[0] #Angle resolution of lidar FOR EVERY 3TH DEGREE
+# k = 3 #3 sigma limit
+k = 9 #3 sigma limit FOR EVERY 3th DEG
 sigma_R_angle = (angle_res/2)/k # Error is within k*sigma => sigma = Error/k
 Q = np.array([[1.0000000e-04, 0.0000000e+00],
               [0.0000000e+00, 3.0461742e-06]])
@@ -33,11 +35,13 @@ R = np.array([[1.00000000e-8, 0.00000000e+00],
 # Q = np.array([[ 2.38468441e+00, -1.12586708e-19],
 #               [-1.12586708e-19,  1.59612223e-34]])
 
-
-
-
-
-
+"""
+    MAKE RANGES 360 (EVERY THIRD DEGREE)
+"""
+ranges = ranges[::3, :]
+angles = angles[::3]
+# print(ranges.shape)
+# print(angles.shape)
 
 def find_inf_intervals(column, pad=3):
     length = len(column)
@@ -142,23 +146,22 @@ X_pred = np.empty((N, 0)) # as beginning 220x0
 P_pred = np.empty((N, 0)) # as beginning 220x0
 Q_straight = Q.copy()
 landmarks_map = []
-# for row in len(ranges[0])
 
-prom = (1, 1.1) #prominence
+prom = (0.1, 0.6) #prominence
 def land_find(ranges, angles, prom, time):
-    previous_choice = next_choice = 4
+    previous_choice = next_choice = 3
     inf_intervals = find_inf_intervals(ranges, previous_choice)
     to_exclude = expand_wrapped_intervals(inf_intervals, previous_choice)
 
     index_range = []
-    prom = (0.3,0.45)
+    # prom = (0.3,0.45)
     peaks, prominence = scipy.signal.find_peaks(-ranges, prominence=prom)
     # print(peaks)
     # print(prominence)
     in_degrees = []
     for a in range(len(angles)):
         in_degrees.append(np.degrees(angles[a]))
-    if time > 100 and time < 100:
+    if time > 1740 and time < 1740:
 
         fig = plt.figure(figsize=(8, 8))
         ax1 = plt.subplot(2, 1, 1)
@@ -199,13 +202,22 @@ def land_find(ranges, angles, prom, time):
         # if diff_prev > threshold or diff_next > threshold:
         #     final_peaks.append(new_peaks[m])
 
+        # avg_range = (mp_prev + mp_next) / 2
+        # diff_range = ranges[peaks[m]] - avg_range
+        # # print('diffs', diff_range)
+        # if diff_range < -1 and diff_range > -50.0:
+        #     final_peaks.append(peaks[m])
+
         avg_range = (mp_prev + mp_next) / 2
         diff_range = ranges[peaks[m]] - avg_range
         # print('diffs', diff_range)
-        if diff_range < -1 and diff_range > -50.0:
+
+        diff = ranges[take_previous] + ranges[take_next] - 2 * ranges[peaks[m]]  # 2nd derivative
+        # print('diff', diff)
+        if diff > 10 and diff_range > -50:
             final_peaks.append(peaks[m])
 
-    if time > 100 and time < 100:
+    if time > 1740 and time < 1740:
         ax1 = plt.subplot(2, 1, 2)
         ax1.plot(in_degrees, ranges, label=r'ranges(0)$')
         for x in new_peaks:
@@ -305,7 +317,7 @@ while i < to_check:
 
     # check the new measurements
     Xp_new = Xp.copy()
-    upper_threshold = 60
+    upper_threshold = 30
     lower_threshold = 5
     for l in range(len(range_land)):
         # for each new measurements find the min d_jk
@@ -360,54 +372,54 @@ pose_pred = X_pred[:, :n_upper][:to_check]
 pose_true = Pose[:to_check]
 # print('true pose:', pose_true)
 
-# exit()
+
 landmark_pred = Xp[3:].reshape(-1, 2)
 
-print('landmark_pred ', landmark_pred)
+print('Num landmark ', len(landmark_pred))
+
 
 # T = np.arange(0, N * Ts, Ts) # Time
 T = time_stamps.copy() # Time
 T = T[:to_check]
 
 # true_meas = []
-# pred_meas = []
-# for p in range(to_check):
-    # # print('p', p)
-    # ranges_t = ranges[:, p]
-    #
-    # for meas_idx in range(len(ranges_t)):
-    #     if np.isinf(ranges_t[meas_idx]) == False:
-    #
-    #         # true_r_x = pose_true[p][0]
-    #         # true_r_y = pose_true[p][1]
-    #         # true_r_theta = pose_true[p][2]
-    #
-    #         pred_r_x = pose_pred[p][0]
-    #         pred_r_y = pose_pred[p][1]
-    #         pred_r_theta = pose_pred[p][2]
-    #
-    #         mp = ranges_t[meas_idx]
-    #         ma = angles[meas_idx]
-    #
-    #
-    #         # true_l_x = true_r_x + mp * np.cos(true_r_theta + ma)
-    #         # true_l_y = true_r_y + mp * np.sin(true_r_theta + ma)
-    #         # true_meas.append([true_l_x, true_l_y])
-    #         #
-    #         pred_l_x = pred_r_x + mp * np.cos(pred_r_theta + ma)
-    #         pred_l_y = pred_r_y + mp * np.sin(pred_r_theta + ma)
-    #         pred_meas.append([pred_l_x, pred_l_y])
 
-# fig = plt.figure()
-# plt.scatter(pred_meas[:, 0], pred_meas[:, 1], label='Pred Meas',
-#             color='blue', marker='o', s=0.3)
-#
-# plt.scatter(landmark_pred[:, 0], landmark_pred[:, 1], label='Estimated Landmarks (Final)',
-#             color='red', marker='o', s=10)
-# true_meas = np.array(true_meas)
-# pred_meas = np.array(pred_meas)
+pred_meas = []
+for p in range(to_check):
+    ranges_t = ranges[:, p]
+    for meas_idx in range(0, len(ranges_t)):
+        if np.isinf(ranges_t[meas_idx]) == False:
+            # true_r_x = pose_true[p][0]
+            # true_r_y = pose_true[p][1]
+            # true_r_theta = pose_true[p][2]
 
-# """ Trajectory and Landmark positions """
+            pred_r_x = pose_pred[p][0]
+            pred_r_y = pose_pred[p][1]
+            pred_r_theta = pose_pred[p][2]
+
+            mp = ranges_t[meas_idx]
+            ma = angles[meas_idx]
+
+
+            # true_l_x = true_r_x + mp * np.cos(true_r_theta + ma)
+            # true_l_y = true_r_y + mp * np.sin(true_r_theta + ma)
+            # true_meas.append([true_l_x, true_l_y])
+            #
+            pred_l_x = pred_r_x + mp * np.cos(pred_r_theta + ma)
+            pred_l_y = pred_r_y + mp * np.sin(pred_r_theta + ma)
+            pred_meas.append([pred_l_x, pred_l_y])
+
+pred_meas = np.array(pred_meas)
+fig = plt.figure()
+plt.scatter(pred_meas[:, 0], pred_meas[:, 1], label='Pred Meas',
+            color='blue', marker='o', s=0.3)
+
+plt.scatter(landmark_pred[:, 0], landmark_pred[:, 1], label='Estimated Landmarks (Final)',
+            color='red', marker='o', s=10)
+plt.plot(pose_pred[:, 0], pose_pred[:, 1], label=r'$\hat{x}_1(t)$', color='red', linestyle='--')
+
+
+""" Trajectory and Landmark positions """
 #
 # fig = plt.figure()
 #
