@@ -4,9 +4,10 @@ from matplotlib.patches import Ellipse
 import scipy
 from scipy.linalg import block_diag
 plt.close('all')
-dataset = 'data_point_land_2.npz'
+dataset = 'data_point_land_1.npz'
 save_fig = False
 data = np.load(dataset, allow_pickle=True)
+
 
 Meas = data['Meas']  # Landmark measurements
 Uf = data['Uf']  # measured forward velocity (odometry)
@@ -20,7 +21,6 @@ Wturn = data['wturn']  # treshold Wturn
 Pose = data['Pose']  # data to be used only for comparison (x(t), y(t), theta(t) of the robot)
 Landmarks = data[
     'Landmarks']  # data to be used only for comparison (ith row corresponds to i+1th of landmark locations.)
-counter = 0
 
 
 
@@ -30,7 +30,6 @@ index_land = Meas.item()['land']  # landmark indices
 
 N = Uf.shape[0]  # Number of odometry measurements
 n_upper = 3  # upper system order: x,y,theta
-# upper_threshold = 14
 upper_threshold = 13.8155
 lower_threshold = 5.9915
 
@@ -63,7 +62,9 @@ landmarks_map = []
 #Odometry trajectory
 X_odom_history = np.empty((N, 3))
 Xodometry = Xp.copy()
-for o in range(0,N):
+X_odom_history[0, :] = Xodometry
+
+for o in range(1,N):
     Xod = Xodometry.copy()
     Xodometry = Xod + (Ts * np.array([Uf[o - 1] * np.cos(Xod[2]), Uf[o - 1] * np.sin(Xod[2]), Ua[o - 1]]))
     X_odom_history[o, :] = Xodometry
@@ -363,5 +364,7 @@ if all_good:
     print("All landmarks are consistent. All good!")
 else:
     print("Error: One or more landmarks are inconsistent. :(")
-#
-plt.show()
+
+if not save_fig:
+    plt.show()
+print('Finished execution')

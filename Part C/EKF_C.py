@@ -4,7 +4,7 @@ from matplotlib.patches import Ellipse
 import scipy
 
 plt.close('all')
-save_fig = True
+save_fig = False
 dataset = 'data_sim_lidar_1.npz'
 data = np.load(dataset, allow_pickle=True)
 
@@ -98,17 +98,20 @@ def land_find(ranges, angles, prom, robot_x, robot_y, robot_theta):
 #Odometry trajectory
 X_odom_history = np.empty((N, 3))
 Xodometry = Xp.copy()
-for o in range(0,N):
+X_odom_history[0, :] = Xodometry
+for o in range(1,N):
     Xod = Xodometry.copy()
     Xodometry = Xod + (Ts * np.array([Uf[o - 1] * np.cos(Xod[2]), Uf[o - 1] * np.sin(Xod[2]), Ua[o - 1]]))
     X_odom_history[o, :] = Xodometry
+np.set_printoptions(precision=4, suppress=True)
+
 
 """
            ########### Initialize and correct for t = 0 ###########
 """
 
 range_land, angle_land = land_find(ranges[:, 0], angles, prom, Xp[0], Xp[1], Xp[2])
-
+print(Pp)
 for l in range(len(range_land)):
     if range_land[l] not in landmarks_map:  # Initialize
         landmarks_map.append(len(landmarks_map))
@@ -119,7 +122,8 @@ for l in range(len(range_land)):
         ly = Xp[1] + mp * np.sin(Xp[2] + ma)
         Xp = append_to_array(Xp, lx)
         Xp = append_to_array(Xp, ly)
-
+print(Xp)
+print(Pp)
 # CORRECT
 
 to_correct = []
@@ -131,7 +135,9 @@ Pp = extend_P(Pp, len(range_land))
 Xp, Pp = correction(Xp, Pp, to_correct, R)
 X_pred = update_data(X_pred, 0, Xp)
 P_pred = update_P_pred(P_pred, 0, np.diag(Pp))
-
+print(Xp)
+print(Pp)
+exit()
 i = 1
 while i < N:
     """
@@ -272,13 +278,15 @@ if save_fig:
 
 # Landmark positions
 landmark_pred = landmark_pred.reshape(-1, 2)
-print('num landmarks:', len(landmark_pred))
+print('Number of landmarks:', len(landmark_pred))
 fig = plt.figure()
 plt.scatter(landmark_pred[:, 0], landmark_pred[:, 1], label='Estimated Landmarks',
             color='green', marker='o', s=15)
 PlotMapSN(Obstacles)
-plt.plot(pose_true[:, 0], pose_true[:, 1], label='$True')
-plt.plot(pose_pred[:, 0], pose_pred[:, 1], label=r'Estimated', color='red', linestyle='--')
+plt.plot(pose_true[:, 0], pose_true[:, 1], label='True')
+plt.plot(pose_pred[:, 0], pose_pred[:, 1], label='Estimated', color='red', linestyle='--')
+plt.plot(pose_odom_pred[:, 0], pose_odom_pred[:, 1], label='Odometry', color='black', linestyle=':')
+
 plt.xlabel("X position (m)")
 plt.ylabel("Y position (m)")
 plt.title("Robot Trajectory and Landmarks")
@@ -326,6 +334,8 @@ if save_fig:
     else:
         plt.savefig(f'Figures_Part_C/Confidence_intervals_data_2.eps', format='eps')
 
+
+"""Confidence Ellipses"""
 r_x = 9.21  # 99% confidence ellipse
 consistent = []
 radii_all = []
@@ -434,5 +444,6 @@ if save_fig:
     else:
         plt.savefig(f'Figures_Part_C/Scans_odometry_data_2.png', dpi=300)
 
-
-plt.show()
+if not save_fig:
+    plt.show()
+print('Finished execution')

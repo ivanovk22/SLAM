@@ -6,9 +6,9 @@ import scipy
 from scipy.linalg import block_diag
 
 plt.close('all')
-save_fig = True
+save_fig = False
 
-dataset = 'data_point_land_2.npz'
+dataset = 'data_point_land_1.npz'
 data = np.load(dataset, allow_pickle=True)
 
 Meas = data['Meas']  # Landmark measurements
@@ -137,7 +137,9 @@ Xp_lower = np.zeros(n_lower)
 
 """Odometry trajectory"""
 Xodometry = Xp[0:3].copy()
-for o in range(0,N):
+X_odom_history[0, :] = Xodometry
+
+for o in range(1,N):
     Xod = Xodometry.copy()
     Xodometry = Xod + (Ts * np.array([Uf[o - 1] * np.cos(Xod[2]), Uf[o - 1] * np.sin(Xod[2]), Ua[o - 1]]))
     X_odom_history[o, :] = Xodometry
@@ -145,7 +147,6 @@ for o in range(0,N):
 """
            ########### Initialize and correct for t = 0 ###########
 """
-
 for l in range(len(index_land[0])):
     if index_land[0][l] not in checked_landmarks:  # Initialize
         checked_landmarks.append(index_land[0][l])
@@ -383,4 +384,6 @@ if all_good:
 else:
     print("Error: One or more landmarks are inconsistent. :(")
 
-plt.show()
+if not save_fig:
+    plt.show()
+print('Finished execution')
